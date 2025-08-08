@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 )
@@ -18,7 +19,18 @@ func main() {
 			log.Println("Accept error:", err)
 			continue
 		}
-		log.Println("Connection accepted")
+		go func(c net.Conn) {
+			defer c.Close()
+			buf := make([]byte, 64)
+			for {
+				n, err := c.Read(buf)
+				if err != nil {
+					log.Println("Read error:", err)
+					break
+				}
+				fmt.Print("client says:", string(buf[:n]))
+			}
+		}(conn)
 	}
 }
 
