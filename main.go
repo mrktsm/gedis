@@ -1,10 +1,35 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 )
+
+func readFull(conn net.Conn, buf []byte) error {
+	bytesRead := 0
+	for bytesRead < len(buf) {
+		n, err := conn.Read(buf[bytesRead:])
+		if err != nil {
+			return err
+		}
+		bytesRead += n
+	}
+	return nil
+}
+
+func writeAll(conn net.Conn, data []byte) error {
+	bytesWritten := 0
+	for bytesWritten < len(data) {
+		n, err := conn.Write(data[bytesWritten:])
+		if err != nil {
+			return err
+		}
+		bytesWritten += n
+	}
+	return nil
+}
 
 func main() {
 	ln, err := net.Listen("tcp", ":1234")
@@ -21,14 +46,32 @@ func main() {
 		}
 		go func(c net.Conn) {
 			defer c.Close()
-			buf := make([]byte, 64)
-			for {
-				n, err := c.Read(buf)
-				if err != nil {
-					log.Println("Read error:", err)
-					break
-				}
-				fmt.Print("client says:", string(buf[:n]))
+			length := make([]byte, 4)
+			err = readFull(c, length)
+			if err != nil {
+				log.Println("Read error:", err)
+				return
+			}
+			lengthInt := binary.LittleEndian.Uint32(length)
+			buf := make([]byte, lengthInt)
+			err = readFull(c, buf)
+			if err != nil {
+				log.Println("Read error:", err)
+				return
+			}
+			fmt.Println("client says:", string(buf))
+			response := []byte("server says: hello")
+			responseLength := make([]byte, 4)
+			binary.LittleEndian.PutUint32(responseLength, uint32(len(response)))
+			err = writeAll(c, responseLength)
+			if err != nil {
+				log.Println("Write error:", err)
+				return
+			}
+			err = writeAll(c, response)
+			if err != nil {
+				log.Println("Write error:", err)
+				return
 			}
 		}(conn)
 	}
