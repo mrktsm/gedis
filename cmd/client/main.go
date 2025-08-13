@@ -80,8 +80,8 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Test multiple requests
-
+	// Test multiple requests one-by-one (current approach)
+	fmt.Println("=== Testing sequential requests ===")
 	err = query(conn, "Hello, server! 1")
 	if err != nil {
 		log.Fatal("Failed to query server:", err)
@@ -95,6 +95,53 @@ func main() {
 	err = query(conn, "Hello, server! 3")
 	if err != nil {
 		log.Fatal("Failed to query server:", err)
+	}
+
+	fmt.Println("=== Testing pipelined requests ===")
+	// Test pipelined requests (send all, then read all)
+	requests := []string{"pipeline1", "pipeline2", "pipeline3"}
+	
+	// Send all requests first
+	for _, req := range requests {
+		length := uint32(len(req))
+		if length > maxMessageSize {
+			log.Fatal("Message too large")
+		}
+		
+		requestLength := make([]byte, 4)
+		binary.LittleEndian.PutUint32(requestLength, length)
+		
+		err = writeAll(conn, requestLength)
+		if err != nil {
+			log.Fatal("Failed to send request length:", err)
+		}
+		
+		err = writeAll(conn, []byte(req))
+		if err != nil {
+			log.Fatal("Failed to send request:", err)
+		}
+	}
+	
+	// Now read all responses
+	for i := 0; i < len(requests); i++ {
+		responseLength := make([]byte, 4)
+		err = readFull(conn, responseLength)
+		if err != nil {
+			log.Fatal("Failed to read response length:", err)
+		}
+		
+		responseLengthInt := binary.LittleEndian.Uint32(responseLength)
+		if responseLengthInt > maxMessageSize {
+			log.Fatal("Response too large")
+		}
+		
+		response := make([]byte, responseLengthInt)
+		err = readFull(conn, response)
+		if err != nil {
+			log.Fatal("Failed to read response:", err)
+		}
+		
+		fmt.Printf("server says: %s\n", string(response))
 	}
 
 	fmt.Println("All queries completed successfully")
