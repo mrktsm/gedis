@@ -8,8 +8,6 @@ import (
 	"redis-in-go/pkg/protocol"
 )
 
-
-
 func query(conn net.Conn, text string) error {
 	// Send the message using protocol package
 	err := protocol.WriteMessage(conn, []byte(text))
