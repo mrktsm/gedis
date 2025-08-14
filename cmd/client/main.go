@@ -1,70 +1,24 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
+
+	"redis-in-go/pkg/protocol"
 )
 
-const maxMessageSize = 4096
 
-func readFull(conn net.Conn, buf []byte) error {
-	bytesRead := 0
-	for bytesRead < len(buf) {
-		n, err := conn.Read(buf[bytesRead:])
-		if err != nil {
-			return err
-		}
-		bytesRead += n
-	}
-	return nil
-}
-
-func writeAll(conn net.Conn, data []byte) error {
-	bytesWritten := 0
-	for bytesWritten < len(data) {
-		n, err := conn.Write(data[bytesWritten:])
-		if err != nil {
-			return err
-		}
-		bytesWritten += n
-	}
-	return nil
-}
 
 func query(conn net.Conn, text string) error {
-	length := uint32(len(text))
-	if length > maxMessageSize {
-		return fmt.Errorf("message too large")
-	}
-
-	requestLength := make([]byte, 4)
-	binary.LittleEndian.PutUint32(requestLength, length)
-	err := writeAll(conn, requestLength)
-	if err != nil {
-		return err
-	}
-	
-	request := []byte(text)
-	err = writeAll(conn, request)
+	// Send the message using protocol package
+	err := protocol.WriteMessage(conn, []byte(text))
 	if err != nil {
 		return err
 	}
 
-	responseLength := make([]byte, 4)
-	err = readFull(conn, responseLength)
-	if err != nil {
-		return err
-	}
-	
-	responseLengthInt := binary.LittleEndian.Uint32(responseLength)
-	if responseLengthInt > maxMessageSize {
-		return fmt.Errorf("response too large")
-	}
-
-	response := make([]byte, responseLengthInt)
-	err = readFull(conn, response)
+	// Read the response using protocol package
+	response, err := protocol.ReadMessage(conn)
 	if err != nil {
 		return err
 	}
@@ -101,42 +55,17 @@ func main() {
 	// Test pipelined requests (send all, then read all)
 	requests := []string{"pipeline1", "pipeline2", "pipeline3"}
 	
-	// Send all requests first
+	// Send all requests first using protocol package
 	for _, req := range requests {
-		length := uint32(len(req))
-		if length > maxMessageSize {
-			log.Fatal("Message too large")
-		}
-		
-		requestLength := make([]byte, 4)
-		binary.LittleEndian.PutUint32(requestLength, length)
-		
-		err = writeAll(conn, requestLength)
-		if err != nil {
-			log.Fatal("Failed to send request length:", err)
-		}
-		
-		err = writeAll(conn, []byte(req))
+		err = protocol.WriteMessage(conn, []byte(req))
 		if err != nil {
 			log.Fatal("Failed to send request:", err)
 		}
 	}
 	
-	// Now read all responses
+	// Now read all responses using protocol package
 	for i := 0; i < len(requests); i++ {
-		responseLength := make([]byte, 4)
-		err = readFull(conn, responseLength)
-		if err != nil {
-			log.Fatal("Failed to read response length:", err)
-		}
-		
-		responseLengthInt := binary.LittleEndian.Uint32(responseLength)
-		if responseLengthInt > maxMessageSize {
-			log.Fatal("Response too large")
-		}
-		
-		response := make([]byte, responseLengthInt)
-		err = readFull(conn, response)
+		response, err := protocol.ReadMessage(conn)
 		if err != nil {
 			log.Fatal("Failed to read response:", err)
 		}
