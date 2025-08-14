@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/banner.png" alt="Redis in Go Banner" width="800"/>
+  <img src="assets/banner.png" alt="Redis in Go Banner" width="600" style="max-width: 100%; height: auto;"/>
 </div>
 
 ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)
