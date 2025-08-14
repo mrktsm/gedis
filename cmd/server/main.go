@@ -6,11 +6,28 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"github.com/google/btree"
 )
 
 const maxMessageSize = 4096
 var dataStore = make(map[string]string)
 var dataStoreMutex sync.RWMutex
+
+type ZSetEntry struct {
+	Score float64
+	Member string
+}
+
+func (a ZSetEntry) Less(b btree.Item) bool {
+	other := b.(ZSetEntry)
+
+	if a.Score != other.Score {
+		return a.Score < other.Score
+	}
+
+	return a.Member < other.Member
+}
 
 func readFull(conn net.Conn, buf []byte) error {
 	bytesRead := 0
