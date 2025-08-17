@@ -63,3 +63,44 @@ func (z *ZSet) Remove(member string) bool {
 
 	return true
 }
+
+func (z *ZSet) GetScore(member string) (float64, bool) {
+	z.mutex.RLock()
+	defer z.mutex.RUnlock()
+
+	entry, exists := z.byName[member]
+	if !exists {
+		return 0, false
+	}
+
+	return entry.Score, true
+}
+
+func (z *ZSet) Size() int {
+	z.mutex.RLock()
+	defer z.mutex.RUnlock()
+
+	return len(z.byName)
+}
+
+func (z *ZSet) Range(min, max float64) []ZSetEntry {
+	z.mutex.RLock()
+	defer z.mutex.RUnlock()
+
+	var result []ZSetEntry
+	
+	pivot := ZSetEntry{Score: min, Member: ""}
+	
+	z.tree.AscendGreaterOrEqual(pivot, func(item btree.Item) bool {
+		entry := item.(ZSetEntry)
+		
+		if entry.Score > max {
+			return false
+		}
+		
+		result = append(result, entry)
+		return true
+	})
+	
+	return result
+}
