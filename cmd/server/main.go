@@ -59,6 +59,11 @@ func executeCommand(cmd []string) (uint32, []byte) {
 			return 1, []byte("ERR wrong number of arguments for 'zrange' command")
 		}
 		return handleZRange(cmd[1], cmd[2], cmd[3])
+	case "ZINCRBY":
+		if len(cmd) != 4 {
+			return 1, []byte("ERR wrong number of arguments for 'zincrby' command")
+		}
+		return handleZIncrBy(cmd[1], cmd[2], cmd[3])
 	default:
 		return 1, []byte("ERR unknown command")
 	}
@@ -179,6 +184,27 @@ func handleZRange(key, minStr, maxStr string) (uint32, []byte) {
 
     response := fmt.Sprintf("[%s]", strings.Join(result, ","))
     return 0, []byte(response)
+}
+
+func handleZIncrBy(key, incrementStr, member string) (uint32, []byte) {
+	increment, err := strconv.ParseFloat(incrementStr, 64)
+	if err != nil {
+		return 1, []byte("ERR invalid increment")
+	}
+
+	dataStoreMutex.Lock()
+	defer dataStoreMutex.Unlock()
+
+	zset, exists := sortedSets[key]
+	if !exists {
+		zset = storage.NewZSet()
+		sortedSets[key] = zset
+	}
+
+	newScore := zset.IncrBy(increment, member)
+	
+	response := fmt.Sprintf("%.1f", newScore)
+	return 0, []byte(response)
 }
 
 func handleRequest(c net.Conn) error {

@@ -104,3 +104,27 @@ func (z *ZSet) Range(min, max float64) []ZSetEntry {
 	
 	return result
 }
+
+
+func (z *ZSet) IncrBy(increment float64, member string) float64 {
+	z.mutex.Lock()
+	defer z.mutex.Unlock()
+
+	if oldEntry, exists := z.byName[member]; exists {
+		z.tree.Delete(oldEntry)
+		
+		newScore := oldEntry.Score + increment
+		
+		newEntry := ZSetEntry{Score: newScore, Member: member}
+		z.tree.ReplaceOrInsert(newEntry)
+		z.byName[member] = newEntry
+		
+		return newScore
+	} else {
+		entry := ZSetEntry{Score: increment, Member: member}
+		z.tree.ReplaceOrInsert(entry)
+		z.byName[member] = entry
+		
+		return increment
+	}
+}

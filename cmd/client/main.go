@@ -113,15 +113,33 @@ func main() {
 		log.Fatal("Failed to send ZREM:", err)
 	}
 
+	// Test ZINCRBY - Increment scores
+	fmt.Println("\n6. Testing ZINCRBY - Give player1 bonus points:")
+	err = sendCommand(conn, []string{"ZINCRBY", "leaderboard", "250", "player1"})
+	if err != nil {
+		log.Fatal("Failed to send ZINCRBY:", err)
+	}
+	
+	err = sendCommand(conn, []string{"ZINCRBY", "leaderboard", "-100", "player2"})
+	if err != nil {
+		log.Fatal("Failed to send ZINCRBY:", err)
+	}
+	
+	// Test ZINCRBY with new member
+	err = sendCommand(conn, []string{"ZINCRBY", "leaderboard", "1000", "newplayer"})
+	if err != nil {
+		log.Fatal("Failed to send ZINCRBY:", err)
+	}
+
 	// Test ZRANGE again - Full leaderboard
-	fmt.Println("\n6. Final leaderboard (scores 0-3000):")
+	fmt.Println("\n7. Final leaderboard (scores 0-3000):")
 	err = sendCommand(conn, []string{"ZRANGE", "leaderboard", "0", "3000"})
 	if err != nil {
 		log.Fatal("Failed to send ZRANGE:", err)
 	}
 
 	// Test edge cases
-	fmt.Println("\n7. Testing edge cases:")
+	fmt.Println("\n8. Testing edge cases:")
 	
 	// Try to get score of non-existent member
 	err = sendCommand(conn, []string{"ZSCORE", "leaderboard", "nonexistent"})
