@@ -1,20 +1,13 @@
-<table>
-<tr>
-<td width="30%" align="center">
-  <img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="150"/>
-</td>
-<td width="70%">
-
 # Redis in Go
+
+<img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="120" align="left"/>
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 A lightweight Redis implementation written in Go, featuring core Redis functionality including key-value storage and sorted sets.
 
-</td>
-</tr>
-</table>
+<br clear="left"/>
 
 ## Features
 
