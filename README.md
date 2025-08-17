@@ -1,9 +1,9 @@
-# Redis in Go
+# Gedis - OSS Redis Implementation in Go
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
-<img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="220" align="left"/>
+<img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="220" align="right"/>
 
 A lightweight Redis implementation written in Go, featuring core Redis functionality including key-value storage and sorted sets. This project demonstrates modern Go programming practices with concurrent client handling, Redis-compatible protocol parsing, and efficient in-memory data structures.
 
