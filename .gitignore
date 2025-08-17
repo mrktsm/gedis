@@ -1,6 +1,9 @@
 # Learning notes (personal)
 NOTES.md
 
+# Experimental banners
+banner.txt
+
 # Go build artifacts
 *.exe
 *.exe~
