@@ -1,4 +1,4 @@
-# Gedis - OSS Redis Implementation in Go
+## Gedis - OSS Redis Implementation in Go
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
