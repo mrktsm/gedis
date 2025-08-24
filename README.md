@@ -2,6 +2,7 @@
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Go Version](https://img.shields.io/badge/Go-1.24.6-00ADD8?logo=go)
 
 <img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="220" align="right"/>
 
@@ -34,5 +35,3 @@ go run cmd/client/main.go
 - **Server**: TCP server handling Redis protocol commands
 - **Storage**: In-memory data structures with thread-safe operations
 - **Protocol**: Redis-compatible command parsing and response formatting
-
-Built with Go 1.24.6
