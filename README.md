@@ -1,6 +1,6 @@
 ## Gedis - OSS Redis Implementation in Go
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+<!-- ![Build Status](https://img.shields.io/badge/build-passing-brightgreen) -->
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Go Version](https://img.shields.io/badge/Go-1.24.6-00ADD8?logo=go)
 
