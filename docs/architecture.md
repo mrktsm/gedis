@@ -100,13 +100,22 @@ releases the keyspace lock.
 
 ## Replication
 
-The first replication model is one writable primary with read-only replicas.
-A primary assigns a random replication ID and a monotonically increasing byte
-offset to its canonical mutation stream. It retains a bounded backlog so a
-replica can request partial synchronization by replication ID and offset.
+The implemented primary assigns a random 40-hex-character replication ID and a
+monotonically increasing byte offset to its canonical mutation stream. It
+retains a bounded byte backlog so a replica can request partial synchronization
+by replication ID and next-byte offset on the normal server port. Successful
+requests receive Redis-shaped `+CONTINUE`; unavailable history receives
+`+FULLRESYNC` and a length-prefixed snapshot before live commands.
+
+The full-sync payload is deliberately canonical RESP reconstruction commands,
+not an RDB file. Its transfer framing follows Redis, but Redis replicas cannot
+load the Gedis-specific payload. This boundary remains explicit until an RDB
+codec exists. An unmodified `redis-cli` can negotiate the stream and inspect
+incremental commands.
 
 When the requested history is unavailable, the primary sends a point-in-time
 snapshot followed by mutations that occurred while the snapshot was produced.
+The read-only Gedis replica client and reconnect loop are the next slice.
 Automatic leader election, sharding, Redis Cluster, and consensus are separate
 future projects and are not implied by primary/replica support.
 

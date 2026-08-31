@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,20 +31,28 @@ func TestReplicationProtocolFullSyncThenLiveMutation(t *testing.T) {
 			t.Errorf("HandleConnectionCommand() error = %v", err)
 		}
 	}()
-	reader := resp.NewReader(client)
-	header, err := reader.ReadValue()
+	buffered := bufio.NewReader(client)
+	header, err := buffered.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read FULLRESYNC header: %v", err)
 	}
-	wantHeader := "FULLRESYNC " + testReplicationID + " " + strconv.FormatInt(primary.Stats().Offset, 10)
-	if header.Kind() != resp.KindSimpleString || string(header.Bytes()) != wantHeader {
-		t.Fatalf("FULLRESYNC header = kind %q, %q; want %q", header.Kind(), header.Bytes(), wantHeader)
+	wantHeader := "+FULLRESYNC " + testReplicationID + " " + strconv.FormatInt(primary.Stats().Offset, 10) + "\r\n"
+	if header != wantHeader {
+		t.Fatalf("FULLRESYNC header = %q, want %q", header, wantHeader)
 	}
-	snapshotValue, err := reader.ReadValue()
-	if err != nil || snapshotValue.Kind() != resp.KindBulkString {
-		t.Fatalf("read snapshot = %#v, %v", snapshotValue, err)
+	lengthLine, err := buffered.ReadString('\n')
+	if err != nil || !strings.HasPrefix(lengthLine, "$") {
+		t.Fatalf("read snapshot length = %q, %v", lengthLine, err)
 	}
-	snapshotReader := resp.NewReader(bytes.NewReader(snapshotValue.Bytes()))
+	length, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(lengthLine, "$"), "\r\n"))
+	if err != nil {
+		t.Fatalf("parse snapshot length %q: %v", lengthLine, err)
+	}
+	snapshotData := make([]byte, length)
+	if _, err := io.ReadFull(buffered, snapshotData); err != nil {
+		t.Fatalf("read snapshot payload: %v", err)
+	}
+	snapshotReader := resp.NewReader(bytes.NewReader(snapshotData))
 	snapshotCommand, err := snapshotReader.ReadCommand()
 	if err != nil || string(snapshotCommand[0]) != "SET" || string(snapshotCommand[2]) != "snapshot" {
 		t.Fatalf("snapshot command = %q, %v", snapshotCommand, err)
@@ -53,7 +62,7 @@ func TestReplicationProtocolFullSyncThenLiveMutation(t *testing.T) {
 	}
 
 	assertReplicationResponse(t, engine, []string{"SET", "key", "live"}, resp.SimpleString("OK"))
-	live, err := reader.ReadCommand()
+	live, err := resp.NewReader(buffered).ReadCommand()
 	if err != nil || string(live[0]) != "SET" || string(live[2]) != "live" {
 		t.Fatalf("live command = %q, %v", live, err)
 	}

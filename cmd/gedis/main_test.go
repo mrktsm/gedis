@@ -23,13 +23,15 @@ func TestParseOptionsDefaults(t *testing.T) {
 		t.Fatalf("parseOptions() error = %v", err)
 	}
 	want := options{
-		address:        "127.0.0.1:6379",
-		writeTimeout:   5 * time.Second,
-		maxBulkLength:  resp.DefaultLimits.MaxBulkLength,
-		maxArrayLength: resp.DefaultLimits.MaxArrayLength,
-		expireInterval: 100 * time.Millisecond,
-		aofPath:        "data/appendonly.aof",
-		aofSyncPolicy:  aof.SyncEverySecond,
+		address:             "127.0.0.1:6379",
+		writeTimeout:        5 * time.Second,
+		maxBulkLength:       resp.DefaultLimits.MaxBulkLength,
+		maxArrayLength:      resp.DefaultLimits.MaxArrayLength,
+		expireInterval:      100 * time.Millisecond,
+		aofPath:             "data/appendonly.aof",
+		aofSyncPolicy:       aof.SyncEverySecond,
+		replBacklogBytes:    1024 * 1024,
+		replSubscriberQueue: 256,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseOptions() = %#v, want %#v", got, want)
@@ -50,21 +52,25 @@ func TestParseOptionsOverrides(t *testing.T) {
 		"-aof-path", "state/gedis.aof",
 		"-appendfsync", "always",
 		"-aof-repair-truncated",
+		"-repl-backlog-bytes", "4096",
+		"-repl-subscriber-queue", "8",
 	}, io.Discard)
 	if err != nil {
 		t.Fatalf("parseOptions() error = %v", err)
 	}
 	want := options{
-		address:        "localhost:1234",
-		readTimeout:    2 * time.Second,
-		writeTimeout:   3 * time.Second,
-		maxBulkLength:  2048,
-		maxArrayLength: 32,
-		expireInterval: 250 * time.Millisecond,
-		appendOnly:     true,
-		aofPath:        "state/gedis.aof",
-		aofSyncPolicy:  aof.SyncAlways,
-		repairAOF:      true,
+		address:             "localhost:1234",
+		readTimeout:         2 * time.Second,
+		writeTimeout:        3 * time.Second,
+		maxBulkLength:       2048,
+		maxArrayLength:      32,
+		expireInterval:      250 * time.Millisecond,
+		appendOnly:          true,
+		aofPath:             "state/gedis.aof",
+		aofSyncPolicy:       aof.SyncAlways,
+		repairAOF:           true,
+		replBacklogBytes:    4096,
+		replSubscriberQueue: 8,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseOptions() = %#v, want %#v", got, want)
@@ -84,6 +90,8 @@ func TestParseOptionsRejectsInvalidInput(t *testing.T) {
 		{"-expire-interval", "0"},
 		{"-appendfsync", "sometimes"},
 		{"-appendonly", "-aof-path", ""},
+		{"-repl-backlog-bytes", "0"},
+		{"-repl-subscriber-queue", "-1"},
 	} {
 		if _, err := parseOptions(arguments, io.Discard); err == nil {
 			t.Fatalf("parseOptions(%q) error = nil, want error", arguments)

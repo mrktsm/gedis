@@ -12,8 +12,9 @@ import (
 )
 
 // HandleConnectionCommand implements the Redis-shaped handshake used by Gedis
-// replicas. FULLRESYNC carries a bulk string of canonical RESP mutations rather
-// than a Redis RDB payload; the incremental stream is canonical RESP commands.
+// replicas. FULLRESYNC carries a Redis-style length-prefixed transfer of
+// canonical RESP mutations rather than an RDB payload; the incremental stream
+// is canonical RESP commands.
 func (p *Primary) HandleConnectionCommand(
 	ctx context.Context,
 	command [][]byte,
@@ -96,7 +97,12 @@ func streamReplication(
 		return err
 	}
 	if snapshot != nil {
-		if err := writer.WriteValue(resp.BulkString(snapshot)); err != nil {
+		length := strconv.AppendInt([]byte{'$'}, int64(len(snapshot)), 10)
+		length = append(length, '\r', '\n')
+		if _, err := buffered.Write(length); err != nil {
+			return err
+		}
+		if _, err := buffered.Write(snapshot); err != nil {
 			return err
 		}
 	}

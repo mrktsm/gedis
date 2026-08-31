@@ -65,6 +65,10 @@ implemented and tested.
 **Exit:** a restarted replica catches up without a full copy when its offset is
 still present in the primary backlog.
 
+**Current status:** primary IDs, byte offsets, bounded backlog, gap-free
+snapshots, `REPLCONF`, and `PSYNC` full/partial streams are implemented. The
+read-only replica client, reconnect behavior, and multi-process proof remain.
+
 ## 7. Operational proof
 
 - Add structured logs, `INFO`, connection metrics, and health checks.

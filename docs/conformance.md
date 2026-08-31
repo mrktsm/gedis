@@ -33,6 +33,7 @@ results were then captured in deterministic tests under `internal/server` or
 | AOF restart | A second Gedis process restored strings, counters, sorted sets, and remaining TTL from the first process's log; truncation requires explicit repair | `cmd/gedis/main_test.go` |
 | `BGREWRITEAOF` | First call replies `Background append only file rewriting started`; an overlapping call returns Redis's in-progress error | `internal/server/persistence_test.go`, `internal/aof/rewrite_test.go` |
 | `INFO persistence` | Returns a RESP bulk-string section with Redis field names where meanings align; project-only fields carry a `gedis_` prefix | `internal/server/info_test.go`, `internal/aof/log_test.go` |
+| Primary `PSYNC` | Uses Redis's 40-hex ID, next-byte offset, `FULLRESYNC`/`CONTINUE` replies, length-prefixed full transfer, and canonical live command stream | `internal/replication/protocol_test.go`, `internal/replication/primary_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,
@@ -51,8 +52,13 @@ AOF encoding, replay, truncation detection, fsync policies, write ordering,
 server startup recovery, and atomic rewrite are implemented. A manual
 `redis-cli` process test compacted 8,410 bytes of superseded history to 137
 bytes, then restarted and recovered the latest string, its remaining TTL, and
-the sorted set. Replication is still roadmap work and must not be presented as
-shipped until its integration tests land.
+the sorted set. Replica-side synchronization is still roadmap work and must not
+be presented as shipped until its integration tests land.
+
+Primary-side replication has a separate compatibility boundary: `redis-cli`
+accepted a Gedis `FULLRESYNC` transfer and logged the following live `SET`, but
+the snapshot bytes are canonical RESP reconstruction commands rather than an
+RDB image. Gedis does not claim that a Redis server can act as its replica.
 
 ## Adding compatibility evidence
 

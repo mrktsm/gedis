@@ -25,6 +25,7 @@ sorted-set commands, and the foundations of append-only persistence.
 - Sorted sets backed by a span-indexed skip list
 - Canonical RESP append-only logging with fsync, replay, and atomic compaction
 - Redis-style `INFO persistence` visibility into durability and rewrites
+- Primary-side `PSYNC` full/partial streams with a bounded byte backlog
 - Configurable protocol limits and graceful shutdown
 - Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 

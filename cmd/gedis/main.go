@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mrktsm/gedis/internal/aof"
+	"github.com/mrktsm/gedis/internal/replication"
 	"github.com/mrktsm/gedis/internal/resp"
 	"github.com/mrktsm/gedis/internal/server"
 	"github.com/mrktsm/gedis/internal/store"
@@ -22,16 +23,18 @@ import (
 const shutdownTimeout = 5 * time.Second
 
 type options struct {
-	address        string
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	maxBulkLength  int
-	maxArrayLength int
-	expireInterval time.Duration
-	appendOnly     bool
-	aofPath        string
-	aofSyncPolicy  aof.SyncPolicy
-	repairAOF      bool
+	address             string
+	readTimeout         time.Duration
+	writeTimeout        time.Duration
+	maxBulkLength       int
+	maxArrayLength      int
+	expireInterval      time.Duration
+	appendOnly          bool
+	aofPath             string
+	aofSyncPolicy       aof.SyncPolicy
+	repairAOF           bool
+	replBacklogBytes    int
+	replSubscriberQueue int
 }
 
 func main() {
@@ -50,7 +53,7 @@ func run(arguments []string, output io.Writer) int {
 
 func runServer(options options, logger *slog.Logger) (exitCode int) {
 	keyspace := store.New()
-	engine := server.NewEngineWithStore(keyspace)
+	var durableSink replication.MutationSink
 	if options.appendOnly {
 		replay, repaired, err := recoverAOF(options.aofPath, keyspace, options.repairAOF)
 		if err != nil {
@@ -79,9 +82,21 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 				exitCode = 1
 			}
 		}()
-		engine = server.NewEngineWithStoreAndSink(keyspace, appendLog)
-		defer engine.WaitForAOFRewrite()
+		durableSink = appendLog
 	}
+
+	primary, err := replication.NewPrimary(replication.PrimaryConfig{
+		BacklogBytes:    options.replBacklogBytes,
+		SubscriberQueue: options.replSubscriberQueue,
+		Downstream:      durableSink,
+	})
+	if err != nil {
+		logger.Error("failed to initialize replication", "error", err)
+		return 1
+	}
+	engine := server.NewEngineWithStoreAndSink(keyspace, primary)
+	primary.SetSnapshotter(engine)
+	defer engine.WaitForAOFRewrite()
 
 	listener, err := net.Listen("tcp", options.address)
 	if err != nil {
@@ -96,6 +111,7 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			MaxBulkLength:  options.maxBulkLength,
 			MaxArrayLength: options.maxArrayLength,
 		},
+		ConnectionCommandHandler: primary,
 	}
 	gedis := server.New(config, engine)
 	expirationContext, stopExpiration := context.WithCancel(context.Background())
@@ -163,6 +179,8 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	flags.StringVar(&parsed.aofPath, "aof-path", "data/appendonly.aof", "append-only file path")
 	flags.StringVar(&aofSyncPolicy, "appendfsync", aofSyncPolicy, "AOF fsync policy: always, everysec, or no")
 	flags.BoolVar(&parsed.repairAOF, "aof-repair-truncated", false, "truncate an incomplete final AOF command during startup")
+	flags.IntVar(&parsed.replBacklogBytes, "repl-backlog-bytes", 1024*1024, "maximum retained replication stream bytes")
+	flags.IntVar(&parsed.replSubscriberQueue, "repl-subscriber-queue", 256, "maximum queued mutations per replica")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, err
 	}
@@ -189,6 +207,12 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	}
 	if parsed.appendOnly && parsed.aofPath == "" {
 		return options{}, errors.New("aof-path cannot be empty when appendonly is enabled")
+	}
+	if parsed.replBacklogBytes <= 0 {
+		return options{}, errors.New("repl-backlog-bytes must be positive")
+	}
+	if parsed.replSubscriberQueue <= 0 {
+		return options{}, errors.New("repl-subscriber-queue must be positive")
 	}
 	return parsed, nil
 }
