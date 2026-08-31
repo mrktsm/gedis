@@ -43,6 +43,13 @@ func TestReadOnlyEngineRejectsWritesAndServesReads(t *testing.T) {
 		t.Fatalf("read-only mutation sink calls = %d, want 0", sink.Calls())
 	}
 	assertResponse(t, clients, []string{"GET", "key"}, resp.BulkStringString("value"))
+	if got := clients.ApplyReplication(stringsToBytes([]string{"SET", "key", "upstream"})).Response; !reflect.DeepEqual(got, resp.SimpleString("OK")) {
+		t.Fatalf("ApplyReplication(SET) = %#v, want OK", got)
+	}
+	assertResponse(t, clients, []string{"GET", "key"}, resp.BulkStringString("upstream"))
+	if sink.Calls() != 1 {
+		t.Fatalf("replication mutation sink calls = %d, want 1", sink.Calls())
+	}
 
 	clients.SetReadOnly(false)
 	assertResponse(t, clients, []string{"SET", "key", "new"}, resp.SimpleString("OK"))

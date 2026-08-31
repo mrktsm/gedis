@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -60,4 +61,63 @@ func TestCaptureSnapshotValidatesAndPropagatesCallback(t *testing.T) {
 	}); !errors.Is(err, callbackError) {
 		t.Fatalf("CaptureSnapshot(callback error) = %v", err)
 	}
+}
+
+func TestInstallSnapshotReplacesStateAndRewritesPersistence(t *testing.T) {
+	t.Parallel()
+
+	keyspace := store.New()
+	sink := &rewriteRecordingSink{}
+	engine := NewEngineWithStoreAndSink(keyspace, sink)
+	assertResponse(t, engine, []string{"SET", "old", "removed"}, resp.SimpleString("OK"))
+	entries := []store.SnapshotEntry{
+		{Key: "counter", Kind: store.KindString, StringValue: []byte("41")},
+		{Key: "leaders", Kind: store.KindSortedSet, SortedSet: []store.ZItem{{Member: "alpha", Score: 10}}},
+	}
+	if err := engine.InstallSnapshot(entries); err != nil {
+		t.Fatalf("InstallSnapshot() error = %v", err)
+	}
+	assertResponse(t, engine, []string{"EXISTS", "old"}, resp.Integer(0))
+	assertResponse(t, engine, []string{"GET", "counter"}, resp.BulkStringString("41"))
+	want := [][][]byte{
+		{[]byte("SET"), []byte("counter"), []byte("41")},
+		{[]byte("ZADD"), []byte("leaders"), []byte("10"), []byte("alpha")},
+	}
+	if !reflect.DeepEqual(sink.rewritten, want) {
+		t.Fatalf("rewritten snapshot = %q, want %q", sink.rewritten, want)
+	}
+}
+
+func TestInstallSnapshotSkipsRewriteWhenAOFDisabled(t *testing.T) {
+	t.Parallel()
+
+	sink := &disabledRewriteSink{}
+	keyspace := store.New()
+	engine := NewEngineWithStoreAndSink(keyspace, sink)
+	if err := engine.InstallSnapshot([]store.SnapshotEntry{
+		{Key: "key", Kind: store.KindString, StringValue: []byte("value")},
+	}); err != nil {
+		t.Fatalf("InstallSnapshot() error = %v", err)
+	}
+	if sink.rewrites != 0 {
+		t.Fatalf("disabled sink rewrites = %d, want 0", sink.rewrites)
+	}
+	assertResponse(t, engine, []string{"GET", "key"}, resp.BulkStringString("value"))
+}
+
+type disabledRewriteSink struct {
+	rewrites int
+}
+
+func (s *disabledRewriteSink) Append(_ [][]byte) error {
+	return nil
+}
+
+func (s *disabledRewriteSink) Rewrite(_ [][][]byte) error {
+	s.rewrites++
+	return nil
+}
+
+func (s *disabledRewriteSink) AOFInfo() (bool, string, int64, error) {
+	return false, "disabled", 0, nil
 }

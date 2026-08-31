@@ -103,6 +103,17 @@ func NewEngineWithStoreAndSink(keyspace *store.Keyspace, sink MutationSink) *Eng
 }
 
 func (e *Engine) Execute(input [][]byte) Result {
+	return e.execute(input, false)
+}
+
+// ApplyReplication executes an upstream command through the same mutation and
+// persistence gate as client traffic while bypassing only replica read-only
+// policy.
+func (e *Engine) ApplyReplication(input [][]byte) Result {
+	return e.execute(input, true)
+}
+
+func (e *Engine) execute(input [][]byte, replication bool) Result {
 	if len(input) == 0 || len(input[0]) == 0 {
 		return Result{Response: resp.Error("ERR empty command")}
 	}
@@ -116,7 +127,7 @@ func (e *Engine) Execute(input [][]byte) Result {
 	if !registered.write {
 		return registered.handler(input[1:])
 	}
-	if e.readOnly.Load() {
+	if e.readOnly.Load() && !replication {
 		return Result{Response: resp.Error("READONLY You can't write against a read only replica.")}
 	}
 
