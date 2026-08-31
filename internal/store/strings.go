@@ -16,6 +16,7 @@ const (
 type SetOptions struct {
 	Condition      SetCondition
 	ExpiresAt      time.Time
+	TTL            time.Duration
 	KeepTTL        bool
 	ReturnPrevious bool
 }
@@ -31,11 +32,17 @@ type StringPair struct {
 	Value []byte
 }
 
+type StringResult struct {
+	Value  []byte
+	Exists bool
+}
+
 func (k *Keyspace) Get(key string) ([]byte, bool, error) {
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 
-	current, exists := k.liveEntryLocked(key, k.clock.Now())
+	now := k.clock.Now()
+	current, exists := k.liveEntryLocked(key, now)
 	if !exists {
 		return nil, false, nil
 	}
@@ -49,7 +56,8 @@ func (k *Keyspace) Set(key string, value []byte, options SetOptions) (SetResult,
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 
-	current, exists := k.liveEntryLocked(key, k.clock.Now())
+	now := k.clock.Now()
+	current, exists := k.liveEntryLocked(key, now)
 	result := SetResult{Applied: false}
 	if exists && options.ReturnPrevious {
 		if current.kind != KindString {
@@ -71,6 +79,9 @@ func (k *Keyspace) Set(key string, value []byte, options SetOptions) (SetResult,
 	}
 
 	expiresAt := options.ExpiresAt
+	if options.TTL > 0 {
+		expiresAt = now.Add(options.TTL)
+	}
 	if options.KeepTTL && exists {
 		expiresAt = current.expiresAt
 	}
@@ -121,20 +132,20 @@ func (k *Keyspace) Increment(key string, increment int64) (int64, error) {
 	return value, nil
 }
 
-func (k *Keyspace) MGet(keys ...string) []SetResult {
+func (k *Keyspace) MGet(keys ...string) []StringResult {
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 
 	now := k.clock.Now()
-	results := make([]SetResult, len(keys))
+	results := make([]StringResult, len(keys))
 	for index, key := range keys {
 		current, exists := k.liveEntryLocked(key, now)
 		if !exists || current.kind != KindString {
 			continue
 		}
-		results[index] = SetResult{
-			Previous:       cloneBytes(current.stringData),
-			PreviousExists: true,
+		results[index] = StringResult{
+			Value:  cloneBytes(current.stringData),
+			Exists: true,
 		}
 	}
 	return results

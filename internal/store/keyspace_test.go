@@ -190,8 +190,8 @@ func TestMGetAndMSet(t *testing.T) {
 	keyspace.entries["other-type"] = entry{kind: KindSortedSet}
 
 	results := keyspace.MGet("one", "missing", "other-type", "two")
-	if len(results) != 4 || string(results[0].Previous) != "1" || results[1].PreviousExists ||
-		results[2].PreviousExists || string(results[3].Previous) != "2" {
+	if len(results) != 4 || string(results[0].Value) != "1" || results[1].Exists ||
+		results[2].Exists || string(results[3].Value) != "2" {
 		t.Fatalf("MGet() = %#v", results)
 	}
 }
@@ -200,7 +200,7 @@ func TestLazyExpiration(t *testing.T) {
 	t.Parallel()
 
 	clock := &fakeClock{now: time.Unix(100, 0)}
-	keyspace := New(withClock(clock))
+	keyspace := New(WithClock(clock))
 	_, _ = keyspace.Set("key", []byte("value"), SetOptions{
 		ExpiresAt: clock.Now().Add(time.Second),
 	})

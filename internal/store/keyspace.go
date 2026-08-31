@@ -19,7 +19,7 @@ const (
 	KindSortedSet
 )
 
-type clock interface {
+type Clock interface {
 	Now() time.Time
 }
 
@@ -47,7 +47,7 @@ type Option func(*Keyspace)
 type Keyspace struct {
 	mutex   sync.RWMutex
 	entries map[string]entry
-	clock   clock
+	clock   Clock
 }
 
 func New(options ...Option) *Keyspace {
@@ -61,7 +61,7 @@ func New(options ...Option) *Keyspace {
 	return keyspace
 }
 
-func withClock(clock clock) Option {
+func WithClock(clock Clock) Option {
 	return func(keyspace *Keyspace) {
 		keyspace.clock = clock
 	}
