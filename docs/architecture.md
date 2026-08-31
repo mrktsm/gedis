@@ -115,7 +115,15 @@ incremental commands.
 
 When the requested history is unavailable, the primary sends a point-in-time
 snapshot followed by mutations that occurred while the snapshot was produced.
-The read-only Gedis replica client and reconnect loop are the next slice.
+A Gedis replica completes `PING`, `REPLCONF`, and `PSYNC` negotiation before it
+accepts client traffic. Full state is decoded into a temporary keyspace and
+installed atomically; later commands pass through the same engine mutation gate
+and AOF as local traffic while bypassing only the client `READONLY` policy. A
+running replica retains its ID and offset across reconnects and requests only
+missing backlog bytes.
+
+Replication ID/offset metadata is not yet durable across a replica process
+restart, which currently forces another full sync after local AOF recovery.
 Automatic leader election, sharding, Redis Cluster, and consensus are separate
 future projects and are not implied by primary/replica support.
 

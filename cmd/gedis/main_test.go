@@ -23,15 +23,19 @@ func TestParseOptionsDefaults(t *testing.T) {
 		t.Fatalf("parseOptions() error = %v", err)
 	}
 	want := options{
-		address:             "127.0.0.1:6379",
-		writeTimeout:        5 * time.Second,
-		maxBulkLength:       resp.DefaultLimits.MaxBulkLength,
-		maxArrayLength:      resp.DefaultLimits.MaxArrayLength,
-		expireInterval:      100 * time.Millisecond,
-		aofPath:             "data/appendonly.aof",
-		aofSyncPolicy:       aof.SyncEverySecond,
-		replBacklogBytes:    1024 * 1024,
-		replSubscriberQueue: 256,
+		address:               "127.0.0.1:6379",
+		writeTimeout:          5 * time.Second,
+		maxBulkLength:         resp.DefaultLimits.MaxBulkLength,
+		maxArrayLength:        resp.DefaultLimits.MaxArrayLength,
+		expireInterval:        100 * time.Millisecond,
+		aofPath:               "data/appendonly.aof",
+		aofSyncPolicy:         aof.SyncEverySecond,
+		replBacklogBytes:      1024 * 1024,
+		replSubscriberQueue:   256,
+		replicaSyncTimeout:    10 * time.Second,
+		replicaDialTimeout:    5 * time.Second,
+		replicaReconnectDelay: 250 * time.Millisecond,
+		replMaxSnapshotBytes:  256 * 1024 * 1024,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseOptions() = %#v, want %#v", got, want)
@@ -54,23 +58,33 @@ func TestParseOptionsOverrides(t *testing.T) {
 		"-aof-repair-truncated",
 		"-repl-backlog-bytes", "4096",
 		"-repl-subscriber-queue", "8",
+		"-replicaof", "primary.example:6379",
+		"-replica-sync-timeout", "4s",
+		"-replica-dial-timeout", "2s",
+		"-replica-reconnect-delay", "50ms",
+		"-repl-max-snapshot-bytes", "1048576",
 	}, io.Discard)
 	if err != nil {
 		t.Fatalf("parseOptions() error = %v", err)
 	}
 	want := options{
-		address:             "localhost:1234",
-		readTimeout:         2 * time.Second,
-		writeTimeout:        3 * time.Second,
-		maxBulkLength:       2048,
-		maxArrayLength:      32,
-		expireInterval:      250 * time.Millisecond,
-		appendOnly:          true,
-		aofPath:             "state/gedis.aof",
-		aofSyncPolicy:       aof.SyncAlways,
-		repairAOF:           true,
-		replBacklogBytes:    4096,
-		replSubscriberQueue: 8,
+		address:               "localhost:1234",
+		readTimeout:           2 * time.Second,
+		writeTimeout:          3 * time.Second,
+		maxBulkLength:         2048,
+		maxArrayLength:        32,
+		expireInterval:        250 * time.Millisecond,
+		appendOnly:            true,
+		aofPath:               "state/gedis.aof",
+		aofSyncPolicy:         aof.SyncAlways,
+		repairAOF:             true,
+		replBacklogBytes:      4096,
+		replSubscriberQueue:   8,
+		replicaOf:             "primary.example:6379",
+		replicaSyncTimeout:    4 * time.Second,
+		replicaDialTimeout:    2 * time.Second,
+		replicaReconnectDelay: 50 * time.Millisecond,
+		replMaxSnapshotBytes:  1048576,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseOptions() = %#v, want %#v", got, want)
@@ -92,6 +106,13 @@ func TestParseOptionsRejectsInvalidInput(t *testing.T) {
 		{"-appendonly", "-aof-path", ""},
 		{"-repl-backlog-bytes", "0"},
 		{"-repl-subscriber-queue", "-1"},
+		{"-replica-sync-timeout", "0"},
+		{"-replica-dial-timeout", "-1s"},
+		{"-replica-reconnect-delay", "0"},
+		{"-repl-max-snapshot-bytes", "0"},
+		{"-replicaof", "missing-port"},
+		{"-replicaof", ":6379"},
+		{"-replicaof", "primary:70000"},
 	} {
 		if _, err := parseOptions(arguments, io.Discard); err == nil {
 			t.Fatalf("parseOptions(%q) error = nil, want error", arguments)

@@ -26,6 +26,7 @@ sorted-set commands, and the foundations of append-only persistence.
 - Canonical RESP append-only logging with fsync, replay, and atomic compaction
 - Redis-style `INFO persistence` visibility into durability and rewrites
 - Primary-side `PSYNC` full/partial streams with a bounded byte backlog
+- Read-only replicas with full sync, live streaming, and reconnect catch-up
 - Configurable protocol limits and graceful shutdown
 - Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 
@@ -54,6 +55,25 @@ prefix and truncate only the incomplete final command.
 `BGREWRITEAOF` runs asynchronously and replaces the log atomically. Unlike
 Redis's fork/copy-on-write implementation, the current Gedis rewrite pauses
 writes while it serializes the snapshot; reads continue after snapshot capture.
+
+## Primary and Replica
+
+```bash
+# terminal 1: writable primary
+go run ./cmd/gedis -addr 127.0.0.1:6379 -appendonly
+
+# terminal 2: read-only replica (waits for initial sync before serving)
+go run ./cmd/gedis -addr 127.0.0.1:6380 \
+  -replicaof 127.0.0.1:6379 \
+  -appendonly -aof-path data/replica.aof
+
+redis-cli -p 6379 SET message replicated
+redis-cli -p 6380 GET message
+```
+
+A disconnected running replica requests partial resynchronization from the
+primary backlog. Replication ID/offset metadata is not yet persisted across a
+replica process restart, so a restarted replica currently requests a full sync.
 
 ## Architecture
 

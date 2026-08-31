@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -23,18 +24,23 @@ import (
 const shutdownTimeout = 5 * time.Second
 
 type options struct {
-	address             string
-	readTimeout         time.Duration
-	writeTimeout        time.Duration
-	maxBulkLength       int
-	maxArrayLength      int
-	expireInterval      time.Duration
-	appendOnly          bool
-	aofPath             string
-	aofSyncPolicy       aof.SyncPolicy
-	repairAOF           bool
-	replBacklogBytes    int
-	replSubscriberQueue int
+	address               string
+	readTimeout           time.Duration
+	writeTimeout          time.Duration
+	maxBulkLength         int
+	maxArrayLength        int
+	expireInterval        time.Duration
+	appendOnly            bool
+	aofPath               string
+	aofSyncPolicy         aof.SyncPolicy
+	repairAOF             bool
+	replBacklogBytes      int
+	replSubscriberQueue   int
+	replicaOf             string
+	replicaSyncTimeout    time.Duration
+	replicaDialTimeout    time.Duration
+	replicaReconnectDelay time.Duration
+	replMaxSnapshotBytes  int64
 }
 
 func main() {
@@ -97,6 +103,54 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 	engine := server.NewEngineWithStoreAndSink(keyspace, primary)
 	primary.SetSnapshotter(engine)
 	defer engine.WaitForAOFRewrite()
+	if options.replicaOf != "" {
+		listeningPort, err := addressPort(options.address)
+		if err != nil {
+			logger.Error("failed to determine replica listening port", "address", options.address, "error", err)
+			return 1
+		}
+		engine.SetReadOnly(true)
+		replica, err := replication.NewReplica(replication.ReplicaConfig{
+			PrimaryAddress:   options.replicaOf,
+			ListeningPort:    listeningPort,
+			DialTimeout:      options.replicaDialTimeout,
+			ReconnectDelay:   options.replicaReconnectDelay,
+			MaxSnapshotBytes: options.replMaxSnapshotBytes,
+		}, engine)
+		if err != nil {
+			logger.Error("failed to initialize replica", "primary", options.replicaOf, "error", err)
+			return 1
+		}
+		replicaContext, stopReplica := context.WithCancel(context.Background())
+		replicaDone := make(chan error, 1)
+		go func() { replicaDone <- replica.Run(replicaContext) }()
+		timer := time.NewTimer(options.replicaSyncTimeout)
+		select {
+		case <-replica.Ready():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			stats := replica.Stats()
+			logger.Info(
+				"replica synchronized",
+				"primary", options.replicaOf,
+				"replication_id", stats.ReplicationID,
+				"offset", stats.Offset,
+			)
+		case <-timer.C:
+			stopReplica()
+			_ = <-replicaDone
+			logger.Error("initial replica synchronization timed out", "primary", options.replicaOf)
+			return 1
+		}
+		defer func() {
+			stopReplica()
+			if err := <-replicaDone; err != nil {
+				logger.Error("replica stopped", "error", err)
+				exitCode = 1
+			}
+		}()
+	}
 
 	listener, err := net.Listen("tcp", options.address)
 	if err != nil {
@@ -181,6 +235,11 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	flags.BoolVar(&parsed.repairAOF, "aof-repair-truncated", false, "truncate an incomplete final AOF command during startup")
 	flags.IntVar(&parsed.replBacklogBytes, "repl-backlog-bytes", 1024*1024, "maximum retained replication stream bytes")
 	flags.IntVar(&parsed.replSubscriberQueue, "repl-subscriber-queue", 256, "maximum queued mutations per replica")
+	flags.StringVar(&parsed.replicaOf, "replicaof", "", "upstream Gedis primary address as host:port")
+	flags.DurationVar(&parsed.replicaSyncTimeout, "replica-sync-timeout", 10*time.Second, "maximum initial replica synchronization wait")
+	flags.DurationVar(&parsed.replicaDialTimeout, "replica-dial-timeout", 5*time.Second, "timeout connecting to the primary")
+	flags.DurationVar(&parsed.replicaReconnectDelay, "replica-reconnect-delay", 250*time.Millisecond, "delay before reconnecting to the primary")
+	flags.Int64Var(&parsed.replMaxSnapshotBytes, "repl-max-snapshot-bytes", 256*1024*1024, "maximum full-sync snapshot size")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, err
 	}
@@ -213,6 +272,34 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	}
 	if parsed.replSubscriberQueue <= 0 {
 		return options{}, errors.New("repl-subscriber-queue must be positive")
+	}
+	if parsed.replicaSyncTimeout <= 0 || parsed.replicaDialTimeout <= 0 || parsed.replicaReconnectDelay <= 0 {
+		return options{}, errors.New("replica timeouts and reconnect delay must be positive")
+	}
+	if parsed.replMaxSnapshotBytes <= 0 {
+		return options{}, errors.New("repl-max-snapshot-bytes must be positive")
+	}
+	if parsed.replicaOf != "" {
+		host, port, err := net.SplitHostPort(parsed.replicaOf)
+		if err != nil || host == "" || port == "" {
+			return options{}, errors.New("replicaof must be a host:port address")
+		}
+		parsedPort, err := strconv.Atoi(port)
+		if err != nil || parsedPort <= 0 || parsedPort > 65535 {
+			return options{}, errors.New("replicaof port must be between 1 and 65535")
+		}
+	}
+	return parsed, nil
+}
+
+func addressPort(address string) (int, error) {
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return 0, err
+	}
+	parsed, err := strconv.Atoi(port)
+	if err != nil || parsed < 0 || parsed > 65535 {
+		return 0, fmt.Errorf("invalid TCP port %q", port)
 	}
 	return parsed, nil
 }

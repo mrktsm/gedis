@@ -34,6 +34,7 @@ results were then captured in deterministic tests under `internal/server` or
 | `BGREWRITEAOF` | First call replies `Background append only file rewriting started`; an overlapping call returns Redis's in-progress error | `internal/server/persistence_test.go`, `internal/aof/rewrite_test.go` |
 | `INFO persistence` | Returns a RESP bulk-string section with Redis field names where meanings align; project-only fields carry a `gedis_` prefix | `internal/server/info_test.go`, `internal/aof/log_test.go` |
 | Primary `PSYNC` | Uses Redis's 40-hex ID, next-byte offset, `FULLRESYNC`/`CONTINUE` replies, length-prefixed full transfer, and canonical live command stream | `internal/replication/protocol_test.go`, `internal/replication/primary_test.go` |
+| Replica sync | Negotiates on TCP, atomically installs full state, applies live commands, rejects clients with `READONLY`, and catches up from backlog after reconnect | `internal/replication/replica_test.go`, `internal/server/readonly_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,
@@ -59,6 +60,12 @@ Primary-side replication has a separate compatibility boundary: `redis-cli`
 accepted a Gedis `FULLRESYNC` transfer and logged the following live `SET`, but
 the snapshot bytes are canonical RESP reconstruction commands rather than an
 RDB image. Gedis does not claim that a Redis server can act as its replica.
+
+A two-process Gedis check recovered a string with its remaining TTL and a
+sorted set during full sync, applied a later live write, returned Redis's
+`READONLY` error to a replica client write, and maintained a separate replica
+AOF. Same-process reconnect/partial-sync behavior is covered by a real-TCP test;
+durable restart offsets remain a documented gap.
 
 ## Adding compatibility evidence
 

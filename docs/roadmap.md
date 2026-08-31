@@ -66,8 +66,9 @@ implemented and tested.
 still present in the primary backlog.
 
 **Current status:** primary IDs, byte offsets, bounded backlog, gap-free
-snapshots, `REPLCONF`, and `PSYNC` full/partial streams are implemented. The
-read-only replica client, reconnect behavior, and multi-process proof remain.
+snapshots, `REPLCONF`, `PSYNC` full/partial streams, read-only replica clients,
+reconnect catch-up, and two-process full/live sync are implemented. Persisting
+replica ID/offset metadata across process restarts remains.
 
 ## 7. Operational proof
 
