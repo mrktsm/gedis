@@ -129,6 +129,24 @@ func (l *Log) Sync() error {
 	return nil
 }
 
+// AOFInfo exposes the small persistence status surface used by INFO without
+// coupling the append-only package to the command server.
+func (l *Log) AOFInfo() (enabled bool, syncPolicy string, currentSize int64, err error) {
+	if l.policy == SyncDisabled {
+		return false, string(l.policy), 0, nil
+	}
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if l.closed {
+		return true, string(l.policy), 0, ErrClosed
+	}
+	info, err := l.file.Stat()
+	if err != nil {
+		return true, string(l.policy), 0, fmt.Errorf("aof: stat: %w", err)
+	}
+	return true, string(l.policy), info.Size(), nil
+}
+
 func (l *Log) Close() error {
 	if l.policy == SyncDisabled {
 		l.mutex.Lock()

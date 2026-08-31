@@ -32,6 +32,7 @@ results were then captured in deterministic tests under `internal/server` or
 | AOF format | Mutations are canonical RESP arrays; relative TTLs are persisted as absolute millisecond deadlines | `internal/aof/log_test.go`, `internal/server/persistence_test.go` |
 | AOF restart | A second Gedis process restored strings, counters, sorted sets, and remaining TTL from the first process's log; truncation requires explicit repair | `cmd/gedis/main_test.go` |
 | `BGREWRITEAOF` | First call replies `Background append only file rewriting started`; an overlapping call returns Redis's in-progress error | `internal/server/persistence_test.go`, `internal/aof/rewrite_test.go` |
+| `INFO persistence` | Returns a RESP bulk-string section with Redis field names where meanings align; project-only fields carry a `gedis_` prefix | `internal/server/info_test.go`, `internal/aof/log_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,

@@ -24,6 +24,7 @@ sorted-set commands, and the foundations of append-only persistence.
 - Redis-compatible string commands, conditional `SET`, counters, and TTLs
 - Sorted sets backed by a span-indexed skip list
 - Canonical RESP append-only logging with fsync, replay, and atomic compaction
+- Redis-style `INFO persistence` visibility into durability and rewrites
 - Configurable protocol limits and graceful shutdown
 - Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 
@@ -42,6 +43,7 @@ go run ./cmd/gedis -appendonly -appendfsync everysec
 
 # Compact superseded history without stopping the process
 redis-cli BGREWRITEAOF
+redis-cli INFO persistence
 ```
 
 When AOF is enabled, the default path is `data/appendonly.aof`. Gedis refuses a

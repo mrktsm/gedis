@@ -47,6 +47,7 @@ type Engine struct {
 	rewriteRunning   bool
 	rewriteLastError error
 	rewriteLastKeys  int
+	rewriteCompleted int64
 	rewriteWait      sync.WaitGroup
 }
 
@@ -95,6 +96,7 @@ func NewEngineWithStoreAndSink(keyspace *store.Keyspace, sink MutationSink) *Eng
 	engine.register("ZRANK", false, engine.handleZRank)
 	engine.register("ZREVRANK", false, engine.handleZRevRank)
 	engine.register("BGREWRITEAOF", false, engine.handleBGRewriteAOF)
+	engine.register("INFO", false, engine.handleInfo)
 	return engine
 }
 

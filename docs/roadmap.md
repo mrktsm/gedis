@@ -50,9 +50,10 @@ the repository at that commit.
 
 **Exit:** acknowledged writes meet their documented durability policy.
 
-**Current status:** fsync policies, ordered mutation logging, startup replay,
-strict corruption handling, opt-in truncated-tail repair, atomic rewrite, and
-restart recovery are implemented. Persistence fields in `INFO` remain.
+**Status:** complete for the defined subset. Fsync policies, ordered mutation
+logging, startup replay, strict corruption handling, opt-in truncated-tail
+repair, atomic rewrite, restart recovery, and `INFO persistence` are
+implemented and tested.
 
 ## 6. Primary/replica synchronization
 

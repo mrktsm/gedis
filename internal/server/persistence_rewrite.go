@@ -23,6 +23,7 @@ type AOFRewriteStatus struct {
 	Running   bool
 	LastError error
 	LastKeys  int
+	Completed int64
 }
 
 // RewriteAOF replaces persistence history with the minimum canonical command
@@ -74,6 +75,7 @@ func (e *Engine) StartAOFRewrite() error {
 		e.rewriteLastError = err
 		if err == nil {
 			e.rewriteLastKeys = keys
+			e.rewriteCompleted++
 		}
 		e.rewriteMutex.Unlock()
 	}()
@@ -87,6 +89,7 @@ func (e *Engine) AOFRewriteStatus() AOFRewriteStatus {
 		Running:   e.rewriteRunning,
 		LastError: e.rewriteLastError,
 		LastKeys:  e.rewriteLastKeys,
+		Completed: e.rewriteCompleted,
 	}
 }
 

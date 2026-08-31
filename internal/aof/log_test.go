@@ -111,6 +111,31 @@ func TestDisabledLogDoesNotRequirePath(t *testing.T) {
 	}
 }
 
+func TestAOFInfoReportsPolicyAndCurrentSize(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "appendonly.aof")
+	log, err := Open(Config{Path: path, SyncPolicy: SyncNever})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	command := [][]byte{[]byte("SET"), []byte("key"), []byte("value")}
+	if err := log.Append(command); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	want, _ := encodeCommand(command)
+	enabled, policy, size, err := log.AOFInfo()
+	if err != nil {
+		t.Fatalf("AOFInfo() error = %v", err)
+	}
+	if !enabled || policy != string(SyncNever) || size != int64(len(want)) {
+		t.Fatalf("AOFInfo() = %t, %q, %d; want true, %q, %d", enabled, policy, size, SyncNever, len(want))
+	}
+	if err := log.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
 func TestReplayAppliesCommandsInOrder(t *testing.T) {
 	t.Parallel()
 
