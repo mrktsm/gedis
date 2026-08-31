@@ -13,11 +13,11 @@ type ZSetEntry struct {
 
 func (a ZSetEntry) Less(b btree.Item) bool {
 	other := b.(ZSetEntry)
-	
+
 	if a.Score != other.Score {
 		return a.Score < other.Score
 	}
-	
+
 	return a.Member < other.Member
 }
 
@@ -88,23 +88,22 @@ func (z *ZSet) Range(min, max float64) []ZSetEntry {
 	defer z.mutex.RUnlock()
 
 	var result []ZSetEntry
-	
+
 	pivot := ZSetEntry{Score: min, Member: ""}
-	
+
 	z.tree.AscendGreaterOrEqual(pivot, func(item btree.Item) bool {
 		entry := item.(ZSetEntry)
-		
+
 		if entry.Score > max {
 			return false
 		}
-		
+
 		result = append(result, entry)
 		return true
 	})
-	
+
 	return result
 }
-
 
 func (z *ZSet) IncrBy(increment float64, member string) float64 {
 	z.mutex.Lock()
@@ -112,19 +111,19 @@ func (z *ZSet) IncrBy(increment float64, member string) float64 {
 
 	if oldEntry, exists := z.byName[member]; exists {
 		z.tree.Delete(oldEntry)
-		
+
 		newScore := oldEntry.Score + increment
-		
+
 		newEntry := ZSetEntry{Score: newScore, Member: member}
 		z.tree.ReplaceOrInsert(newEntry)
 		z.byName[member] = newEntry
-		
+
 		return newScore
 	} else {
 		entry := ZSetEntry{Score: increment, Member: member}
 		z.tree.ReplaceOrInsert(entry)
 		z.byName[member] = entry
-		
+
 		return increment
 	}
 }
