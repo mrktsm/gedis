@@ -16,9 +16,22 @@ const outputBufferSize = 16 * 1024
 
 // Config controls network behavior and protocol resource limits.
 type Config struct {
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	ProtocolLimits resp.Limits
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	ProtocolLimits           resp.Limits
+	ConnectionCommandHandler ConnectionCommandHandler
+}
+
+// ConnectionCommandHandler can intercept commands that change a connection's
+// protocol mode, such as PSYNC. A terminal handler owns the connection until it
+// returns; ordinary commands continue through Engine.
+type ConnectionCommandHandler interface {
+	HandleConnectionCommand(
+		ctx context.Context,
+		command [][]byte,
+		connection net.Conn,
+		writer *bufio.Writer,
+	) (handled bool, terminal bool, err error)
 }
 
 func DefaultConfig() Config {
@@ -35,16 +48,21 @@ type Server struct {
 	connections map[net.Conn]struct{}
 	closing     bool
 	waitGroup   sync.WaitGroup
+	lifecycle   context.Context
+	stop        context.CancelFunc
 }
 
 func New(config Config, engine *Engine) *Server {
 	if engine == nil {
 		engine = NewEngine()
 	}
+	lifecycle, stop := context.WithCancel(context.Background())
 	return &Server{
 		config:      config,
 		engine:      engine,
 		connections: make(map[net.Conn]struct{}),
+		lifecycle:   lifecycle,
+		stop:        stop,
 	}
 }
 
@@ -114,6 +132,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.mutex.Unlock()
 
+	s.stop()
 	if listener != nil {
 		_ = listener.Close()
 	}
@@ -158,6 +177,23 @@ func (s *Server) serveConnection(connection net.Conn) {
 				))
 			}
 			return
+		}
+		if handler := s.config.ConnectionCommandHandler; handler != nil {
+			handled, terminal, err := handler.HandleConnectionCommand(
+				s.lifecycle,
+				command,
+				connection,
+				bufferedWriter,
+			)
+			if err != nil {
+				return
+			}
+			if handled {
+				if terminal {
+					return
+				}
+				continue
+			}
 		}
 
 		result := s.engine.Execute(command)

@@ -286,7 +286,7 @@ func encodeCommands(commands [][][]byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return encoded.Bytes(), nil
+	return append([]byte{}, encoded.Bytes()...), nil
 }
 
 type Subscription struct {

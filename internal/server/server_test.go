@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -146,6 +147,41 @@ func TestServerShutdownClosesActiveConnections(t *testing.T) {
 	}
 }
 
+func TestServerConnectionHandlerCanUpgradeUntilShutdown(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	handler := &blockingConnectionHandler{started: make(chan struct{})}
+	config := DefaultConfig()
+	config.ConnectionCommandHandler = handler
+	server := New(config, NewEngine())
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- server.Serve(listener) }()
+
+	connection := dialTestServer(t, listener.Addr().String())
+	defer connection.Close()
+	writer := resp.NewWriter(connection)
+	reader := resp.NewReader(connection)
+	if err := writer.WriteCommand([]byte("PING")); err != nil {
+		t.Fatalf("write PING: %v", err)
+	}
+	if response, err := reader.ReadValue(); err != nil || string(response.Bytes()) != "PONG" {
+		t.Fatalf("PING response = %#v, %v", response, err)
+	}
+	if err := writer.WriteCommand([]byte("STREAM")); err != nil {
+		t.Fatalf("write STREAM: %v", err)
+	}
+	if response, err := reader.ReadValue(); err != nil || string(response.Bytes()) != "UPGRADED" {
+		t.Fatalf("STREAM response = %#v, %v", response, err)
+	}
+	<-handler.started
+	stopTestServer(t, server)
+	if err := <-serveDone; err != nil {
+		t.Fatalf("Serve() error = %v", err)
+	}
+}
+
 func startTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
 
@@ -189,4 +225,28 @@ func dialTestServer(t *testing.T, address string) net.Conn {
 		t.Fatalf("dial %s: %v", address, err)
 	}
 	return connection
+}
+
+type blockingConnectionHandler struct {
+	started chan struct{}
+}
+
+func (h *blockingConnectionHandler) HandleConnectionCommand(
+	ctx context.Context,
+	command [][]byte,
+	_ net.Conn,
+	writer *bufio.Writer,
+) (bool, bool, error) {
+	if len(command) == 0 || string(command[0]) != "STREAM" {
+		return false, false, nil
+	}
+	if err := resp.NewWriter(writer).WriteValue(resp.SimpleString("UPGRADED")); err != nil {
+		return true, true, err
+	}
+	if err := writer.Flush(); err != nil {
+		return true, true, err
+	}
+	close(h.started)
+	<-ctx.Done()
+	return true, true, nil
 }
