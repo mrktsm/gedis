@@ -36,7 +36,14 @@ go run ./cmd/gedis
 # Connect with an unmodified Redis client
 redis-cli PING
 redis-cli ECHO "hello from Gedis"
+
+# Enable AOF recovery with Redis-style fsync choices
+go run ./cmd/gedis -appendonly -appendfsync everysec
 ```
+
+When AOF is enabled, the default path is `data/appendonly.aof`. Gedis refuses a
+truncated tail by default; pass `-aof-repair-truncated` to keep the valid command
+prefix and truncate only the incomplete final command.
 
 ## Architecture
 
@@ -44,7 +51,8 @@ redis-cli ECHO "hello from Gedis"
 - **Protocol**: Independent streaming RESP2 parser and encoder
 - **Command engine**: Transport-independent validation and response semantics
 - **Keyspace**: Typed values, lazy/active expiration, and atomic mutations
-- **Persistence**: Ordered canonical mutations and AOF recovery primitives
+- **Persistence**: Ordered canonical mutations, startup recovery, and fsync
+  policies
 
 The sequential rebuild is specified in the [architecture](docs/architecture.md),
 [roadmap](docs/roadmap.md), [conformance log](docs/conformance.md), and

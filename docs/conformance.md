@@ -30,6 +30,7 @@ results were then captured in deterministic tests under `internal/server` or
 | `ZRANGE` | Rank and score ranges, reverse ordering, exclusive bounds, `LIMIT`, and `WITHSCORES` match the probed subset | `internal/server/sorted_sets_test.go` |
 | Wrong types | String operations on sorted sets and sorted-set operations on strings return `WRONGTYPE` | `internal/server/strings_test.go`, `internal/server/sorted_sets_test.go` |
 | AOF format | Mutations are canonical RESP arrays; relative TTLs are persisted as absolute millisecond deadlines | `internal/aof/log_test.go`, `internal/server/persistence_test.go` |
+| AOF restart | A second Gedis process restored strings, counters, sorted sets, and remaining TTL from the first process's log; truncation requires explicit repair | `cmd/gedis/main_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,
@@ -44,10 +45,10 @@ supported data types are strings and sorted sets. Transactions, Lua/functions,
 streams, pub/sub, ACLs, cluster mode, eviction policies, RESP3, and the broader
 Redis command surface are outside the present subset.
 
-AOF encoding, replay, truncation detection, fsync policies, and engine write
-ordering are implemented as libraries. Server startup recovery, atomic rewrite,
-and replication are still roadmap work and must not be presented as shipped
-features until their integration and restart tests land.
+AOF encoding, replay, truncation detection, fsync policies, write ordering, and
+server startup recovery are implemented. Atomic rewrite and replication are
+still roadmap work and must not be presented as shipped features until their
+integration tests land.
 
 ## Adding compatibility evidence
 

@@ -85,10 +85,12 @@ The append-only file stores successful mutating commands as canonical RESP2
 arrays. Reusing the wire format makes the log inspectable and lets recovery use
 the same command validation and execution path as live traffic.
 
-The planned policies are `always`, `everysec`, and `no`, matching Redis's broad
-durability trade-off. Rewrite produces the minimum command sequence needed to
-reconstruct the current state, fsyncs the temporary file, and atomically renames
-it over the old log.
+The implemented policies are `always`, `everysec`, and `no`, matching Redis's
+broad durability trade-off. Recovery runs before the listener opens and rejects
+corruption. An incomplete final command can be truncated only through an
+explicit operator flag. The next persistence slice will rewrite the minimum
+command sequence needed to reconstruct current state, fsync the temporary file,
+and atomically rename it over the old log.
 
 ## Replication
 

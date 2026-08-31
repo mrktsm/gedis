@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mrktsm/gedis/internal/aof"
 	"github.com/mrktsm/gedis/internal/resp"
 	"github.com/mrktsm/gedis/internal/server"
 	"github.com/mrktsm/gedis/internal/store"
@@ -27,6 +28,10 @@ type options struct {
 	maxBulkLength  int
 	maxArrayLength int
 	expireInterval time.Duration
+	appendOnly     bool
+	aofPath        string
+	aofSyncPolicy  aof.SyncPolicy
+	repairAOF      bool
 }
 
 func main() {
@@ -40,6 +45,43 @@ func run(arguments []string, output io.Writer) int {
 	}
 
 	logger := slog.New(slog.NewTextHandler(output, nil))
+	return runServer(options, logger)
+}
+
+func runServer(options options, logger *slog.Logger) (exitCode int) {
+	keyspace := store.New()
+	engine := server.NewEngineWithStore(keyspace)
+	if options.appendOnly {
+		replay, repaired, err := recoverAOF(options.aofPath, keyspace, options.repairAOF)
+		if err != nil {
+			logger.Error("failed to load append-only file", "path", options.aofPath, "error", err)
+			return 1
+		}
+		logger.Info(
+			"append-only file loaded",
+			"path", options.aofPath,
+			"commands", replay.Commands,
+			"valid_bytes", replay.ValidBytes,
+			"repaired", repaired,
+		)
+
+		appendLog, err := aof.Open(aof.Config{
+			Path:       options.aofPath,
+			SyncPolicy: options.aofSyncPolicy,
+		})
+		if err != nil {
+			logger.Error("failed to open append-only file", "path", options.aofPath, "error", err)
+			return 1
+		}
+		defer func() {
+			if err := appendLog.Close(); err != nil {
+				logger.Error("failed to close append-only file", "path", options.aofPath, "error", err)
+				exitCode = 1
+			}
+		}()
+		engine = server.NewEngineWithStoreAndSink(keyspace, appendLog)
+	}
+
 	listener, err := net.Listen("tcp", options.address)
 	if err != nil {
 		logger.Error("failed to listen", "address", options.address, "error", err)
@@ -54,8 +96,7 @@ func run(arguments []string, output io.Writer) int {
 			MaxArrayLength: options.maxArrayLength,
 		},
 	}
-	keyspace := store.New()
-	gedis := server.New(config, server.NewEngineWithStore(keyspace))
+	gedis := server.New(config, engine)
 	expirationContext, stopExpiration := context.WithCancel(context.Background())
 	expirationDone := make(chan struct{})
 	go func() {
@@ -107,6 +148,7 @@ func run(arguments []string, output io.Writer) int {
 func parseOptions(arguments []string, output io.Writer) (options, error) {
 	defaults := resp.DefaultLimits
 	parsed := options{}
+	aofSyncPolicy := string(aof.SyncEverySecond)
 
 	flags := flag.NewFlagSet("gedis", flag.ContinueOnError)
 	flags.SetOutput(output)
@@ -116,9 +158,14 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	flags.IntVar(&parsed.maxBulkLength, "max-bulk-bytes", defaults.MaxBulkLength, "maximum RESP bulk string size")
 	flags.IntVar(&parsed.maxArrayLength, "max-array-length", defaults.MaxArrayLength, "maximum RESP array length")
 	flags.DurationVar(&parsed.expireInterval, "expire-interval", 100*time.Millisecond, "active expiration interval")
+	flags.BoolVar(&parsed.appendOnly, "appendonly", false, "enable append-only persistence")
+	flags.StringVar(&parsed.aofPath, "aof-path", "data/appendonly.aof", "append-only file path")
+	flags.StringVar(&aofSyncPolicy, "appendfsync", aofSyncPolicy, "AOF fsync policy: always, everysec, or no")
+	flags.BoolVar(&parsed.repairAOF, "aof-repair-truncated", false, "truncate an incomplete final AOF command during startup")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, err
 	}
+	parsed.aofSyncPolicy = aof.SyncPolicy(aofSyncPolicy)
 	if flags.NArg() != 0 {
 		return options{}, fmt.Errorf("unexpected positional arguments: %v", flags.Args())
 	}
@@ -133,6 +180,14 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	}
 	if parsed.maxBulkLength <= 0 || parsed.maxArrayLength <= 0 {
 		return options{}, errors.New("protocol limits must be positive")
+	}
+	if parsed.aofSyncPolicy != aof.SyncAlways &&
+		parsed.aofSyncPolicy != aof.SyncEverySecond &&
+		parsed.aofSyncPolicy != aof.SyncNever {
+		return options{}, errors.New("appendfsync must be always, everysec, or no")
+	}
+	if parsed.appendOnly && parsed.aofPath == "" {
+		return options{}, errors.New("aof-path cannot be empty when appendonly is enabled")
 	}
 	return parsed, nil
 }
