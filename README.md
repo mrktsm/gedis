@@ -35,3 +35,6 @@ go run cmd/client/main.go
 - **Server**: TCP server handling Redis protocol commands
 - **Storage**: In-memory data structures with thread-safe operations
 - **Protocol**: Redis-compatible command parsing and response formatting
+
+The sequential rebuild is specified in the [architecture](docs/architecture.md),
+[roadmap](docs/roadmap.md), and [engineering references](docs/references.md).
