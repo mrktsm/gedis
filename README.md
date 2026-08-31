@@ -10,9 +10,9 @@ A Redis-compatible in-memory database written from scratch in Go to explore
 streaming protocol parsing, concurrent command execution, persistence, and
 replication.
 
-Gedis is undergoing a sequential rebuild. The current server implements a
-tested RESP2 networking foundation; command, storage, persistence, and
-replication milestones are tracked explicitly below.
+Gedis is undergoing a sequential rebuild. The current server combines a tested
+RESP2 networking layer with a typed concurrent keyspace, expiration, string and
+sorted-set commands, and the foundations of append-only persistence.
 
 <br clear="left"/>
 
@@ -21,9 +21,11 @@ replication milestones are tracked explicitly below.
 - Binary-safe, bounded RESP2 parsing and encoding
 - Pipelined commands over persistent TCP connections
 - Concurrent clients with ordered per-connection execution
-- `PING`, `ECHO`, and `QUIT`
+- Redis-compatible string commands, conditional `SET`, counters, and TTLs
+- Sorted sets backed by a span-indexed skip list
+- Canonical RESP append-only logging with configurable fsync and replay
 - Configurable protocol limits and graceful shutdown
-- Unit, black-box TCP, race-detector, and fuzz coverage
+- Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 
 ## Quick Start
 
@@ -41,6 +43,9 @@ redis-cli ECHO "hello from Gedis"
 - **Server**: TCP lifecycle, concurrent clients, ordered dispatch, and shutdown
 - **Protocol**: Independent streaming RESP2 parser and encoder
 - **Command engine**: Transport-independent validation and response semantics
+- **Keyspace**: Typed values, lazy/active expiration, and atomic mutations
+- **Persistence**: Ordered canonical mutations and AOF recovery primitives
 
 The sequential rebuild is specified in the [architecture](docs/architecture.md),
-[roadmap](docs/roadmap.md), and [engineering references](docs/references.md).
+[roadmap](docs/roadmap.md), [conformance log](docs/conformance.md), and
+[engineering references](docs/references.md).
