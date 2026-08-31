@@ -1,9 +1,16 @@
 package replication
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/mrktsm/gedis/internal/resp"
+	"github.com/mrktsm/gedis/internal/server"
+	"github.com/mrktsm/gedis/internal/store"
 )
 
 const testReplicationID = "0123456789abcdef0123456789abcdef01234567"
@@ -153,6 +160,63 @@ func TestPrimaryDelegatesAOFOperations(t *testing.T) {
 	}
 }
 
+func TestPrimaryFullSyncPairsSnapshotOffsetAndLiveStream(t *testing.T) {
+	t.Parallel()
+
+	keyspace := store.New()
+	primary := newTestPrimary(t, 4096, 4, nil)
+	engine := server.NewEngineWithStoreAndSink(keyspace, primary)
+	primary.SetSnapshotter(engine)
+	assertReplicationResponse(t, engine, []string{"SET", "counter", "1"}, resp.SimpleString("OK"))
+	assertReplicationResponse(t, engine, []string{"ZADD", "leaders", "10", "alpha"}, resp.Integer(1))
+
+	full, subscription, err := primary.FullSync()
+	if err != nil {
+		t.Fatalf("FullSync() error = %v", err)
+	}
+	defer subscription.Close()
+	stats := primary.Stats()
+	if full.ReplicationID != testReplicationID || full.Offset != stats.Offset || full.Keys != 2 {
+		t.Fatalf("FullSync() = %#v, stats %#v", full, stats)
+	}
+
+	recovered := server.NewEngine()
+	reader := resp.NewReader(bytes.NewReader(full.Data))
+	for {
+		command, err := reader.ReadCommand()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("ReadCommand(snapshot) error = %v", err)
+		}
+		if response := recovered.Execute(command).Response; response.Kind() == resp.KindError {
+			t.Fatalf("snapshot command %q returned %q", command, response.Bytes())
+		}
+	}
+	assertReplicationResponse(t, recovered, []string{"GET", "counter"}, resp.BulkStringString("1"))
+	assertReplicationResponse(t, recovered, []string{"ZSCORE", "leaders", "alpha"}, resp.BulkStringString("10"))
+
+	assertReplicationResponse(t, engine, []string{"INCR", "counter"}, resp.Integer(2))
+	select {
+	case chunk := <-subscription.Chunks():
+		if chunk.StartOffset != full.Offset+1 {
+			t.Fatalf("live chunk starts at %d, want %d", chunk.StartOffset, full.Offset+1)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for mutation after full snapshot")
+	}
+}
+
+func TestPrimaryFullSyncRequiresSnapshotter(t *testing.T) {
+	t.Parallel()
+
+	primary := newTestPrimary(t, 1024, 1, nil)
+	if _, subscription, err := primary.FullSync(); !errors.Is(err, ErrSnapshotUnavailable) || subscription != nil {
+		t.Fatalf("FullSync() = subscription %v, error %v; want ErrSnapshotUnavailable", subscription, err)
+	}
+}
+
 func TestNewPrimaryValidatesConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -224,4 +288,16 @@ func cloneCommand(command [][]byte) [][]byte {
 		cloned[index] = append([]byte(nil), argument...)
 	}
 	return cloned
+}
+
+func assertReplicationResponse(t *testing.T, engine *server.Engine, command []string, want resp.Value) {
+	t.Helper()
+	encoded := make([][]byte, len(command))
+	for index, argument := range command {
+		encoded[index] = []byte(argument)
+	}
+	got := engine.Execute(encoded).Response
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Execute(%q) = %#v, want %#v", command, got, want)
+	}
 }

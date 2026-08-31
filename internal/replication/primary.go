@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/mrktsm/gedis/internal/resp"
+	"github.com/mrktsm/gedis/internal/snapshot"
+	"github.com/mrktsm/gedis/internal/store"
 )
 
 const (
@@ -20,10 +22,15 @@ var (
 	ErrInvalidQueueSize     = errors.New("replication subscriber queue must be positive")
 	ErrPersistenceDisabled  = errors.New("append-only persistence is not enabled")
 	ErrRewriteUnsupported   = errors.New("downstream persistence does not support rewrite")
+	ErrSnapshotUnavailable  = errors.New("replication snapshot source is not configured")
 )
 
 type MutationSink interface {
 	Append(command [][]byte) error
+}
+
+type Snapshotter interface {
+	CaptureSnapshot(callback func([]store.SnapshotEntry) error) error
 }
 
 type PrimaryConfig struct {
@@ -47,6 +54,13 @@ type PrimaryStats struct {
 	ConnectedReplicas int
 }
 
+type FullSyncSnapshot struct {
+	ReplicationID string
+	Offset        int64
+	Keys          int
+	Data          []byte
+}
+
 type Primary struct {
 	mutex sync.Mutex
 
@@ -54,8 +68,15 @@ type Primary struct {
 	backlog         *Backlog
 	subscriberQueue int
 	downstream      MutationSink
+	snapshotter     Snapshotter
 	nextSubscriber  uint64
 	subscribers     map[uint64]chan Chunk
+}
+
+func (p *Primary) SetSnapshotter(snapshotter Snapshotter) {
+	p.mutex.Lock()
+	p.snapshotter = snapshotter
+	p.mutex.Unlock()
 }
 
 func NewPrimary(config PrimaryConfig) (*Primary, error) {
@@ -140,6 +161,43 @@ func (p *Primary) PartialSync(replicationID string, offset int64) ([]byte, *Subs
 	return initial, subscription, p.backlog.Offset(), true
 }
 
+// FullSync captures state and, under the engine mutation barrier, atomically
+// pairs it with the current offset and a subscription for later writes.
+func (p *Primary) FullSync() (FullSyncSnapshot, *Subscription, error) {
+	p.mutex.Lock()
+	snapshotter := p.snapshotter
+	p.mutex.Unlock()
+	if snapshotter == nil {
+		return FullSyncSnapshot{}, nil, ErrSnapshotUnavailable
+	}
+
+	var result FullSyncSnapshot
+	var subscription *Subscription
+	err := snapshotter.CaptureSnapshot(func(entries []store.SnapshotEntry) error {
+		encoded, err := encodeCommands(snapshot.Commands(entries))
+		if err != nil {
+			return fmt.Errorf("replication: encode full snapshot: %w", err)
+		}
+		p.mutex.Lock()
+		result = FullSyncSnapshot{
+			ReplicationID: p.id,
+			Offset:        p.backlog.Offset(),
+			Keys:          len(entries),
+			Data:          encoded,
+		}
+		subscription = p.subscribeLocked()
+		p.mutex.Unlock()
+		return nil
+	})
+	if err != nil {
+		if subscription != nil {
+			subscription.Close()
+		}
+		return FullSyncSnapshot{}, nil, err
+	}
+	return result, subscription, nil
+}
+
 func (p *Primary) Subscribe() (*Subscription, int64) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -216,6 +274,17 @@ func encodeCommand(command [][]byte) ([]byte, error) {
 	var encoded bytes.Buffer
 	if err := resp.NewWriter(&encoded).WriteCommand(command...); err != nil {
 		return nil, err
+	}
+	return encoded.Bytes(), nil
+}
+
+func encodeCommands(commands [][][]byte) ([]byte, error) {
+	var encoded bytes.Buffer
+	writer := resp.NewWriter(&encoded)
+	for _, command := range commands {
+		if err := writer.WriteCommand(command...); err != nil {
+			return nil, err
+		}
 	}
 	return encoded.Bytes(), nil
 }
