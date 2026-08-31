@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrktsm/gedis/internal/resp"
@@ -42,6 +43,7 @@ type Engine struct {
 	writeMutex       sync.Mutex
 	mutationSink     MutationSink
 	persistenceError error
+	readOnly         atomic.Bool
 
 	rewriteMutex     sync.Mutex
 	rewriteRunning   bool
@@ -114,6 +116,9 @@ func (e *Engine) Execute(input [][]byte) Result {
 	if !registered.write {
 		return registered.handler(input[1:])
 	}
+	if e.readOnly.Load() {
+		return Result{Response: resp.Error("READONLY You can't write against a read only replica.")}
+	}
 
 	e.writeMutex.Lock()
 	defer e.writeMutex.Unlock()
@@ -133,6 +138,16 @@ func (e *Engine) Execute(input [][]byte) Result {
 		return persistenceFailure(err)
 	}
 	return result
+}
+
+// SetReadOnly controls client-facing write policy. Replication should apply
+// upstream commands through a separate writable Engine sharing the keyspace.
+func (e *Engine) SetReadOnly(readOnly bool) {
+	e.readOnly.Store(readOnly)
+}
+
+func (e *Engine) ReadOnly() bool {
+	return e.readOnly.Load()
 }
 
 func (e *Engine) register(name string, write bool, handler commandHandler) {
