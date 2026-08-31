@@ -12,6 +12,7 @@ var (
 	ErrNotInteger       = errors.New("value is not an integer or out of range")
 	ErrNotFloat         = errors.New("value is not a valid float")
 	ErrInvalidArguments = errors.New("invalid arguments")
+	ErrInvalidSnapshot  = errors.New("invalid keyspace snapshot")
 )
 
 // Kind identifies a value stored in the keyspace.
