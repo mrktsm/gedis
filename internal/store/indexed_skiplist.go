@@ -189,7 +189,7 @@ func (s *indexedSkipList) rank(score float64, member string) uint64 {
 	return invalidSkipListRank
 }
 
-func (s *indexedSkipList) firstInScoreRange(minimum scoreBoundary) *skipListNode {
+func (s *indexedSkipList) firstInScoreRange(minimum ScoreBoundary) *skipListNode {
 	current := s.header
 	for level := s.level - 1; level >= 0; level-- {
 		for current.levels[level].forward != nil && !minimum.includesLower(
@@ -201,7 +201,7 @@ func (s *indexedSkipList) firstInScoreRange(minimum scoreBoundary) *skipListNode
 	return current.levels[0].forward
 }
 
-func (s *indexedSkipList) lastInScoreRange(maximum scoreBoundary) *skipListNode {
+func (s *indexedSkipList) lastInScoreRange(maximum ScoreBoundary) *skipListNode {
 	current := s.header
 	for level := s.level - 1; level >= 0; level-- {
 		for current.levels[level].forward != nil && maximum.includesUpper(
@@ -235,21 +235,21 @@ func randomSkipListLevel() int {
 	return level
 }
 
-type scoreBoundary struct {
-	value     float64
-	exclusive bool
+type ScoreBoundary struct {
+	Value     float64
+	Exclusive bool
 }
 
-func (b scoreBoundary) includesLower(score float64) bool {
-	if b.exclusive {
-		return score > b.value
+func (b ScoreBoundary) includesLower(score float64) bool {
+	if b.Exclusive {
+		return score > b.Value
 	}
-	return score >= b.value
+	return score >= b.Value
 }
 
-func (b scoreBoundary) includesUpper(score float64) bool {
-	if b.exclusive {
-		return score < b.value
+func (b ScoreBoundary) includesUpper(score float64) bool {
+	if b.Exclusive {
+		return score < b.Value
 	}
-	return score <= b.value
+	return score <= b.Value
 }

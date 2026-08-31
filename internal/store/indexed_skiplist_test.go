@@ -106,15 +106,15 @@ func TestIndexedSkipListScoreBoundaries(t *testing.T) {
 		list.insert(score, member)
 	}
 
-	first := list.firstInScoreRange(scoreBoundary{value: 1, exclusive: true})
+	first := list.firstInScoreRange(ScoreBoundary{Value: 1, Exclusive: true})
 	if first == nil || first.member != "two" {
 		t.Fatalf("first exclusive score > 1 = %#v, want two", first)
 	}
-	last := list.lastInScoreRange(scoreBoundary{value: 2})
+	last := list.lastInScoreRange(ScoreBoundary{Value: 2})
 	if last == nil || last.member != "two" {
 		t.Fatalf("last inclusive score <= 2 = %#v, want two", last)
 	}
-	if got := list.firstInScoreRange(scoreBoundary{value: 4}); got != nil {
+	if got := list.firstInScoreRange(ScoreBoundary{Value: 4}); got != nil {
 		t.Fatalf("first score >= 4 = %#v, want nil", got)
 	}
 }

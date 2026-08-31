@@ -8,8 +8,10 @@ import (
 )
 
 var (
-	ErrWrongType  = errors.New("operation against a key holding the wrong kind of value")
-	ErrNotInteger = errors.New("value is not an integer or out of range")
+	ErrWrongType        = errors.New("operation against a key holding the wrong kind of value")
+	ErrNotInteger       = errors.New("value is not an integer or out of range")
+	ErrNotFloat         = errors.New("value is not a valid float")
+	ErrInvalidArguments = errors.New("invalid arguments")
 )
 
 // Kind identifies a value stored in the keyspace.
@@ -33,6 +35,7 @@ func (wallClock) Now() time.Time {
 type entry struct {
 	kind       Kind
 	stringData []byte
+	sortedSet  *sortedSet
 	expiresAt  time.Time
 	generation uint64
 }
