@@ -123,6 +123,15 @@ func (e *Engine) rewriterLocked() (mutationRewriter, error) {
 	if e.mutationSink == nil {
 		return nil, ErrPersistenceDisabled
 	}
+	if provider, ok := e.mutationSink.(aofInfoProvider); ok {
+		enabled, _, _, err := provider.AOFInfo()
+		if err != nil {
+			return nil, err
+		}
+		if !enabled {
+			return nil, ErrPersistenceDisabled
+		}
+	}
 	rewriter, ok := e.mutationSink.(mutationRewriter)
 	if !ok {
 		return nil, ErrRewriteUnsupported
