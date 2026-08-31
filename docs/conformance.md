@@ -31,6 +31,7 @@ results were then captured in deterministic tests under `internal/server` or
 | Wrong types | String operations on sorted sets and sorted-set operations on strings return `WRONGTYPE` | `internal/server/strings_test.go`, `internal/server/sorted_sets_test.go` |
 | AOF format | Mutations are canonical RESP arrays; relative TTLs are persisted as absolute millisecond deadlines | `internal/aof/log_test.go`, `internal/server/persistence_test.go` |
 | AOF restart | A second Gedis process restored strings, counters, sorted sets, and remaining TTL from the first process's log; truncation requires explicit repair | `cmd/gedis/main_test.go` |
+| `BGREWRITEAOF` | First call replies `Background append only file rewriting started`; an overlapping call returns Redis's in-progress error | `internal/server/persistence_test.go`, `internal/aof/rewrite_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,
@@ -45,10 +46,12 @@ supported data types are strings and sorted sets. Transactions, Lua/functions,
 streams, pub/sub, ACLs, cluster mode, eviction policies, RESP3, and the broader
 Redis command surface are outside the present subset.
 
-AOF encoding, replay, truncation detection, fsync policies, write ordering, and
-server startup recovery are implemented. Atomic rewrite and replication are
-still roadmap work and must not be presented as shipped features until their
-integration tests land.
+AOF encoding, replay, truncation detection, fsync policies, write ordering,
+server startup recovery, and atomic rewrite are implemented. A manual
+`redis-cli` process test compacted 8,410 bytes of superseded history to 137
+bytes, then restarted and recovered the latest string, its remaining TTL, and
+the sorted set. Replication is still roadmap work and must not be presented as
+shipped until its integration tests land.
 
 ## Adding compatibility evidence
 

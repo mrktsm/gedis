@@ -80,6 +80,7 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			}
 		}()
 		engine = server.NewEngineWithStoreAndSink(keyspace, appendLog)
+		defer engine.WaitForAOFRewrite()
 	}
 
 	listener, err := net.Listen("tcp", options.address)

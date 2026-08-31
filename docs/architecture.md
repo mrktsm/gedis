@@ -88,9 +88,15 @@ the same command validation and execution path as live traffic.
 The implemented policies are `always`, `everysec`, and `no`, matching Redis's
 broad durability trade-off. Recovery runs before the listener opens and rejects
 corruption. An incomplete final command can be truncated only through an
-explicit operator flag. The next persistence slice will rewrite the minimum
-command sequence needed to reconstruct current state, fsync the temporary file,
-and atomically rename it over the old log.
+explicit operator flag.
+
+`BGREWRITEAOF` snapshots live keys into a deterministic minimum command
+sequence, fsyncs a same-directory temporary file, renames it over the old log,
+fsyncs the directory entry, and resumes appending through the replacement file.
+The job runs in a goroutine, but this implementation deliberately uses the
+engine write gate rather than Redis's process fork and copy-on-write machinery:
+writes pause during serialization, while reads continue after the snapshot copy
+releases the keyspace lock.
 
 ## Replication
 

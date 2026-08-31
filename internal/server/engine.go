@@ -42,6 +42,12 @@ type Engine struct {
 	writeMutex       sync.Mutex
 	mutationSink     MutationSink
 	persistenceError error
+
+	rewriteMutex     sync.Mutex
+	rewriteRunning   bool
+	rewriteLastError error
+	rewriteLastKeys  int
+	rewriteWait      sync.WaitGroup
 }
 
 func NewEngine() *Engine {
@@ -88,6 +94,7 @@ func NewEngineWithStoreAndSink(keyspace *store.Keyspace, sink MutationSink) *Eng
 	engine.register("ZRANGE", false, engine.handleZRange)
 	engine.register("ZRANK", false, engine.handleZRank)
 	engine.register("ZREVRANK", false, engine.handleZRevRank)
+	engine.register("BGREWRITEAOF", false, engine.handleBGRewriteAOF)
 	return engine
 }
 

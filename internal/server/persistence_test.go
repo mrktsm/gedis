@@ -214,6 +214,44 @@ func TestRewriteAOFRequiresRewriteCapablePersistence(t *testing.T) {
 	}
 }
 
+func TestBGRewriteAOFStartsOnceAndReportsCompletion(t *testing.T) {
+	t.Parallel()
+
+	sink := newBlockingRewriteSink()
+	engine := NewEngineWithStoreAndSink(store.New(), sink)
+	assertResponse(t, engine, []string{"SET", "key", "value"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"BGREWRITEAOF"}, resp.SimpleString(
+		"Background append only file rewriting started",
+	))
+	<-sink.started
+
+	assertResponse(t, engine, []string{"BGREWRITEAOF"}, resp.Error(
+		"ERR Background append only file rewriting already in progress",
+	))
+	if status := engine.AOFRewriteStatus(); !status.Running {
+		t.Fatalf("AOFRewriteStatus() = %#v, want running", status)
+	}
+
+	close(sink.release)
+	engine.WaitForAOFRewrite()
+	status := engine.AOFRewriteStatus()
+	if status.Running || status.LastError != nil || status.LastKeys != 1 {
+		t.Fatalf("AOFRewriteStatus() after completion = %#v", status)
+	}
+}
+
+func TestBGRewriteAOFRejectsDisabledPersistenceAndArguments(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	assertResponse(t, engine, []string{"BGREWRITEAOF"}, resp.Error(
+		"ERR append only persistence is not enabled",
+	))
+	assertResponse(t, engine, []string{"BGREWRITEAOF", "extra"}, resp.Error(
+		"ERR wrong number of arguments for 'bgrewriteaof' command",
+	))
+}
+
 type recordingSink struct {
 	mutex    sync.Mutex
 	commands [][][]byte
@@ -247,6 +285,28 @@ func cloneByteCommand(command [][]byte) [][]byte {
 		cloned[index] = append([]byte(nil), argument...)
 	}
 	return cloned
+}
+
+type blockingRewriteSink struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func newBlockingRewriteSink() *blockingRewriteSink {
+	return &blockingRewriteSink{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (s *blockingRewriteSink) Append(_ [][]byte) error {
+	return nil
+}
+
+func (s *blockingRewriteSink) Rewrite(_ [][][]byte) error {
+	close(s.started)
+	<-s.release
+	return nil
 }
 
 func (s *recordingSink) Append(command [][]byte) error {
