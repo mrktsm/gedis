@@ -268,7 +268,7 @@ func (k *Keyspace) ZRangeByScore(
 	}
 	if minimum.Value > maximum.Value ||
 		(minimum.Value == maximum.Value && (minimum.Exclusive || maximum.Exclusive)) ||
-		count == 0 {
+		count == 0 || offset < 0 {
 		return []ZItem{}, nil
 	}
 

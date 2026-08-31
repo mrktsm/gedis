@@ -60,6 +60,14 @@ func NewEngineWithStore(keyspace *store.Keyspace) *Engine {
 	engine.register("TTL", engine.handleTTL)
 	engine.register("PTTL", engine.handlePTTL)
 	engine.register("PERSIST", engine.handlePersist)
+	engine.register("ZADD", engine.handleZAdd)
+	engine.register("ZREM", engine.handleZRem)
+	engine.register("ZSCORE", engine.handleZScore)
+	engine.register("ZCARD", engine.handleZCard)
+	engine.register("ZINCRBY", engine.handleZIncrBy)
+	engine.register("ZRANGE", engine.handleZRange)
+	engine.register("ZRANK", engine.handleZRank)
+	engine.register("ZREVRANK", engine.handleZRevRank)
 	return engine
 }
 
