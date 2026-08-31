@@ -85,11 +85,11 @@ func (k *Keyspace) Set(key string, value []byte, options SetOptions) (SetResult,
 	if options.KeepTTL && exists {
 		expiresAt = current.expiresAt
 	}
-	k.entries[key] = entry{
+	k.setEntryLocked(key, entry{
 		kind:       KindString,
 		stringData: cloneBytes(value),
 		expiresAt:  expiresAt,
-	}
+	})
 	result.Applied = true
 	return result, nil
 }
@@ -124,11 +124,11 @@ func (k *Keyspace) Increment(key string, increment int64) (int64, error) {
 	if exists {
 		expiresAt = current.expiresAt
 	}
-	k.entries[key] = entry{
+	k.setEntryLocked(key, entry{
 		kind:       KindString,
 		stringData: []byte(strconv.FormatInt(value, 10)),
 		expiresAt:  expiresAt,
-	}
+	})
 	return value, nil
 }
 
@@ -156,9 +156,9 @@ func (k *Keyspace) MSet(pairs ...StringPair) {
 	defer k.mutex.Unlock()
 
 	for _, pair := range pairs {
-		k.entries[pair.Key] = entry{
+		k.setEntryLocked(pair.Key, entry{
 			kind:       KindString,
 			stringData: cloneBytes(pair.Value),
-		}
+		})
 	}
 }

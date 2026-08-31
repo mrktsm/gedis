@@ -55,6 +55,11 @@ func NewEngineWithStore(keyspace *store.Keyspace) *Engine {
 	engine.register("MGET", engine.handleMGet)
 	engine.register("MSET", engine.handleMSet)
 	engine.register("TYPE", engine.handleType)
+	engine.register("EXPIRE", engine.handleExpire)
+	engine.register("PEXPIRE", engine.handlePExpire)
+	engine.register("TTL", engine.handleTTL)
+	engine.register("PTTL", engine.handlePTTL)
+	engine.register("PERSIST", engine.handlePersist)
 	return engine
 }
 
@@ -232,6 +237,56 @@ func (e *Engine) handleType(arguments [][]byte) Result {
 	default:
 		return Result{Response: resp.SimpleString("none")}
 	}
+}
+
+func (e *Engine) handleExpire(arguments [][]byte) Result {
+	if len(arguments) != 2 {
+		return wrongArity("expire")
+	}
+	return e.expire(arguments, time.Second)
+}
+
+func (e *Engine) handlePExpire(arguments [][]byte) Result {
+	if len(arguments) != 2 {
+		return wrongArity("pexpire")
+	}
+	return e.expire(arguments, time.Millisecond)
+}
+
+func (e *Engine) expire(arguments [][]byte, unit time.Duration) Result {
+	amount, err := strconv.ParseInt(string(arguments[1]), 10, 64)
+	if err != nil || amount > math.MaxInt64/int64(unit) || amount < math.MinInt64/int64(unit) {
+		return Result{Response: resp.Error("ERR value is not an integer or out of range")}
+	}
+	applied := e.keyspace.Expire(string(arguments[0]), time.Duration(amount)*unit)
+	if applied {
+		return Result{Response: resp.Integer(1)}
+	}
+	return Result{Response: resp.Integer(0)}
+}
+
+func (e *Engine) handleTTL(arguments [][]byte) Result {
+	if len(arguments) != 1 {
+		return wrongArity("ttl")
+	}
+	return Result{Response: resp.Integer(e.keyspace.TTL(string(arguments[0])))}
+}
+
+func (e *Engine) handlePTTL(arguments [][]byte) Result {
+	if len(arguments) != 1 {
+		return wrongArity("pttl")
+	}
+	return Result{Response: resp.Integer(e.keyspace.PTTL(string(arguments[0])))}
+}
+
+func (e *Engine) handlePersist(arguments [][]byte) Result {
+	if len(arguments) != 1 {
+		return wrongArity("persist")
+	}
+	if e.keyspace.Persist(string(arguments[0])) {
+		return Result{Response: resp.Integer(1)}
+	}
+	return Result{Response: resp.Integer(0)}
 }
 
 func storeError(err error) Result {

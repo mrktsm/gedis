@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrktsm/gedis/internal/resp"
 	"github.com/mrktsm/gedis/internal/server"
+	"github.com/mrktsm/gedis/internal/store"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -25,6 +26,7 @@ type options struct {
 	writeTimeout   time.Duration
 	maxBulkLength  int
 	maxArrayLength int
+	expireInterval time.Duration
 }
 
 func main() {
@@ -52,7 +54,18 @@ func run(arguments []string, output io.Writer) int {
 			MaxArrayLength: options.maxArrayLength,
 		},
 	}
-	gedis := server.New(config, server.NewEngine())
+	keyspace := store.New()
+	gedis := server.New(config, server.NewEngineWithStore(keyspace))
+	expirationContext, stopExpiration := context.WithCancel(context.Background())
+	expirationDone := make(chan struct{})
+	go func() {
+		keyspace.RunExpiration(expirationContext, options.expireInterval, 1000)
+		close(expirationDone)
+	}()
+	defer func() {
+		stopExpiration()
+		<-expirationDone
+	}()
 
 	signalContext, stopSignals := signal.NotifyContext(
 		context.Background(),
@@ -102,6 +115,7 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	flags.DurationVar(&parsed.writeTimeout, "write-timeout", 5*time.Second, "response write timeout")
 	flags.IntVar(&parsed.maxBulkLength, "max-bulk-bytes", defaults.MaxBulkLength, "maximum RESP bulk string size")
 	flags.IntVar(&parsed.maxArrayLength, "max-array-length", defaults.MaxArrayLength, "maximum RESP array length")
+	flags.DurationVar(&parsed.expireInterval, "expire-interval", 100*time.Millisecond, "active expiration interval")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, err
 	}
@@ -113,6 +127,9 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	}
 	if parsed.readTimeout < 0 || parsed.writeTimeout < 0 {
 		return options{}, errors.New("timeouts cannot be negative")
+	}
+	if parsed.expireInterval <= 0 {
+		return options{}, errors.New("expire-interval must be positive")
 	}
 	if parsed.maxBulkLength <= 0 || parsed.maxArrayLength <= 0 {
 		return options{}, errors.New("protocol limits must be positive")

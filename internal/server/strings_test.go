@@ -65,6 +65,40 @@ func TestSetExpiration(t *testing.T) {
 	assertResponse(t, engine, []string{"GET", "seconds"}, resp.NullBulkString())
 }
 
+func TestExpirationCommands(t *testing.T) {
+	t.Parallel()
+
+	clock := &engineFakeClock{now: time.Unix(100, 0)}
+	keyspace := store.New(store.WithClock(clock))
+	engine := NewEngineWithStore(keyspace)
+
+	assertResponse(t, engine, []string{"TTL", "missing"}, resp.Integer(-2))
+	assertResponse(t, engine, []string{"SET", "key", "value"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"TTL", "key"}, resp.Integer(-1))
+	assertResponse(t, engine, []string{"PEXPIRE", "key", "1500"}, resp.Integer(1))
+	assertResponse(t, engine, []string{"PTTL", "key"}, resp.Integer(1500))
+	assertResponse(t, engine, []string{"TTL", "key"}, resp.Integer(2))
+	assertResponse(t, engine, []string{"PERSIST", "key"}, resp.Integer(1))
+	assertResponse(t, engine, []string{"PERSIST", "key"}, resp.Integer(0))
+	assertResponse(t, engine, []string{"EXPIRE", "key", "0"}, resp.Integer(1))
+	assertResponse(t, engine, []string{"EXISTS", "key"}, resp.Integer(0))
+	assertResponse(t, engine, []string{"EXPIRE", "missing", "10"}, resp.Integer(0))
+}
+
+func TestKeepTTLAndIncrementPreserveExpiration(t *testing.T) {
+	t.Parallel()
+
+	clock := &engineFakeClock{now: time.Unix(100, 0)}
+	keyspace := store.New(store.WithClock(clock))
+	engine := NewEngineWithStore(keyspace)
+
+	assertResponse(t, engine, []string{"SET", "key", "1", "EX", "10"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"SET", "key", "2", "KEEPTTL"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"INCR", "key"}, resp.Integer(3))
+	clock.now = clock.now.Add(10 * time.Second)
+	assertResponse(t, engine, []string{"GET", "key"}, resp.NullBulkString())
+}
+
 func TestSetRejectsInvalidOptions(t *testing.T) {
 	t.Parallel()
 
@@ -117,7 +151,8 @@ func TestStringCommandArities(t *testing.T) {
 	commands := [][]string{
 		{"GET"}, {"GET", "one", "two"}, {"SET", "key"}, {"DEL"}, {"EXISTS"},
 		{"INCR"}, {"INCR", "one", "two"}, {"INCRBY", "key"}, {"MGET"},
-		{"MSET"}, {"MSET", "key"}, {"TYPE"},
+		{"MSET"}, {"MSET", "key"}, {"TYPE"}, {"EXPIRE", "key"},
+		{"PEXPIRE", "key"}, {"TTL"}, {"PTTL"}, {"PERSIST"},
 	}
 	engine := NewEngine()
 	for _, command := range commands {

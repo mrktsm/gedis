@@ -1,6 +1,7 @@
 package store
 
 import (
+	"container/heap"
 	"errors"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type entry struct {
 	kind       Kind
 	stringData []byte
 	expiresAt  time.Time
+	generation uint64
 }
 
 func (e entry) expired(now time.Time) bool {
@@ -48,6 +50,9 @@ type Keyspace struct {
 	mutex   sync.RWMutex
 	entries map[string]entry
 	clock   Clock
+
+	nextGeneration uint64
+	expirations    expirationHeap
 }
 
 func New(options ...Option) *Keyspace {
@@ -131,6 +136,22 @@ func (k *Keyspace) liveEntryLocked(key string, now time.Time) (entry, bool) {
 		return entry{}, false
 	}
 	return current, true
+}
+
+func (k *Keyspace) setEntryLocked(key string, value entry) {
+	k.nextGeneration++
+	if k.nextGeneration == 0 {
+		k.nextGeneration++
+	}
+	value.generation = k.nextGeneration
+	k.entries[key] = value
+	if !value.expiresAt.IsZero() {
+		heap.Push(&k.expirations, expirationItem{
+			key:        key,
+			expiresAt:  value.expiresAt,
+			generation: value.generation,
+		})
+	}
 }
 
 func cloneBytes(value []byte) []byte {
