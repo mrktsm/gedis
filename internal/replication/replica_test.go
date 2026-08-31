@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"errors"
 	"net"
 	"reflect"
 	"testing"
@@ -100,6 +101,69 @@ func TestReplicaReconnectsWithPartialSync(t *testing.T) {
 	}
 }
 
+func TestReplicaCheckpointResumesAfterObjectRestart(t *testing.T) {
+	primary, primaryEngine := newProtocolPrimary(t)
+	_, address, stopPrimary := startPrimaryServer(t, primary, primaryEngine, "127.0.0.1:0")
+	defer stopPrimary()
+	assertReplicationResponse(t, primaryEngine, []string{"SET", "counter", "1"}, resp.SimpleString("OK"))
+
+	firstStore := store.New()
+	firstEngine := server.NewEngineWithStore(firstStore)
+	firstEngine.SetReadOnly(true)
+	first, err := NewReplica(ReplicaConfig{
+		PrimaryAddress: address,
+		ReconnectDelay: 10 * time.Millisecond,
+	}, firstEngine)
+	if err != nil {
+		t.Fatalf("NewReplica(first) error = %v", err)
+	}
+	firstContext, stopFirst := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- first.Run(firstContext) }()
+	awaitReplicaReady(t, first)
+	awaitStringValue(t, firstEngine, "counter", "1")
+	stopFirst()
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first Replica.Run() error = %v", err)
+	}
+	checkpoint, err := first.Checkpoint(123)
+	if err != nil {
+		t.Fatalf("Checkpoint() error = %v", err)
+	}
+	restoredState := firstStore.Snapshot()
+
+	assertReplicationResponse(t, primaryEngine, []string{"INCR", "counter"}, resp.Integer(2))
+	restartedStore := store.New()
+	if err := restartedStore.Restore(restoredState); err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	restartedEngine := server.NewEngineWithStore(restartedStore)
+	restartedEngine.SetReadOnly(true)
+	restarted, err := NewReplica(ReplicaConfig{
+		PrimaryAddress: address,
+		ReconnectDelay: 10 * time.Millisecond,
+		InitialState:   &checkpoint,
+	}, restartedEngine)
+	if err != nil {
+		t.Fatalf("NewReplica(restarted) error = %v", err)
+	}
+	restartedContext, stopRestarted := context.WithCancel(context.Background())
+	restartedDone := make(chan error, 1)
+	go func() { restartedDone <- restarted.Run(restartedContext) }()
+	defer func() {
+		stopRestarted()
+		if err := <-restartedDone; err != nil {
+			t.Errorf("restarted Replica.Run() error = %v", err)
+		}
+	}()
+	awaitReplicaReady(t, restarted)
+	awaitStringValue(t, restartedEngine, "counter", "2")
+	stats := restarted.Stats()
+	if stats.FullSyncs != 0 || stats.PartialSyncs != 1 {
+		t.Fatalf("restarted replica Stats() = %#v, want one partial sync", stats)
+	}
+}
+
 func TestDecodeSnapshotRejectsCommandErrors(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +185,31 @@ func TestNewReplicaValidatesConfiguration(t *testing.T) {
 	}
 	if _, err := NewReplica(ReplicaConfig{PrimaryAddress: "primary:6379", MaxSnapshotBytes: -1}, engine); err == nil {
 		t.Fatal("NewReplica(negative snapshot limit) error = nil")
+	}
+	checkpoint := PersistentState{
+		Version:        replicationStateVersion,
+		PrimaryAddress: "other:6379",
+		ReplicationID:  testReplicationID,
+		Offset:         1,
+		AOFSize:        2,
+	}
+	if _, err := NewReplica(ReplicaConfig{
+		PrimaryAddress: "primary:6379",
+		InitialState:   &checkpoint,
+	}, engine); !errors.Is(err, ErrInvalidReplicationState) {
+		t.Fatalf("NewReplica(mismatched checkpoint) error = %v", err)
+	}
+}
+
+func TestReplicaCheckpointRequiresSynchronization(t *testing.T) {
+	t.Parallel()
+
+	replica, err := NewReplica(ReplicaConfig{PrimaryAddress: "primary:6379"}, server.NewEngine())
+	if err != nil {
+		t.Fatalf("NewReplica() error = %v", err)
+	}
+	if _, err := replica.Checkpoint(0); !errors.Is(err, ErrNoReplicationState) {
+		t.Fatalf("Checkpoint() error = %v, want ErrNoReplicationState", err)
 	}
 }
 

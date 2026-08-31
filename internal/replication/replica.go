@@ -29,6 +29,7 @@ var (
 	ErrPrimaryAddressRequired = errors.New("replication primary address is required")
 	ErrReplicaEngineRequired  = errors.New("replication apply engine is required")
 	ErrInvalidSnapshotLimit   = errors.New("replication snapshot limit must be positive")
+	ErrNoReplicationState     = errors.New("replica has not completed synchronization")
 )
 
 type ReplicaConfig struct {
@@ -37,6 +38,7 @@ type ReplicaConfig struct {
 	DialTimeout      time.Duration
 	ReconnectDelay   time.Duration
 	MaxSnapshotBytes int64
+	InitialState     *PersistentState
 }
 
 type ReplicaStats struct {
@@ -85,12 +87,47 @@ func NewReplica(config ReplicaConfig, engine *server.Engine) (*Replica, error) {
 	if config.MaxSnapshotBytes < 0 {
 		return nil, ErrInvalidSnapshotLimit
 	}
+	stats := ReplicaStats{PrimaryAddress: config.PrimaryAddress}
+	if config.InitialState != nil {
+		if err := config.InitialState.Validate(); err != nil {
+			return nil, err
+		}
+		if config.InitialState.PrimaryAddress != config.PrimaryAddress {
+			return nil, fmt.Errorf(
+				"%w: checkpoint primary %q does not match %q",
+				ErrInvalidReplicationState,
+				config.InitialState.PrimaryAddress,
+				config.PrimaryAddress,
+			)
+		}
+		stats.ReplicationID = config.InitialState.ReplicationID
+		stats.Offset = config.InitialState.Offset
+	}
 	return &Replica{
 		config: config,
-		stats:  ReplicaStats{PrimaryAddress: config.PrimaryAddress},
+		stats:  stats,
 		ready:  make(chan struct{}),
 		engine: engine,
 	}, nil
+}
+
+func (r *Replica) Checkpoint(aofSize int64) (PersistentState, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if r.stats.ReplicationID == "" {
+		return PersistentState{}, ErrNoReplicationState
+	}
+	state := PersistentState{
+		Version:        replicationStateVersion,
+		PrimaryAddress: r.config.PrimaryAddress,
+		ReplicationID:  r.stats.ReplicationID,
+		Offset:         r.stats.Offset,
+		AOFSize:        aofSize,
+	}
+	if err := state.Validate(); err != nil {
+		return PersistentState{}, err
+	}
+	return state, nil
 }
 
 func (r *Replica) Ready() <-chan struct{} {
