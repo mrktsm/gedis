@@ -3,10 +3,9 @@ package server
 import (
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/mrktsm/gedis/internal/resp"
-	"github.com/mrktsm/gedis/internal/store"
+	"github.com/mrktsm/gedis/internal/snapshot"
 )
 
 var (
@@ -38,12 +37,12 @@ func (e *Engine) RewriteAOF() (int, error) {
 		return 0, err
 	}
 
-	snapshot := e.keyspace.Snapshot()
-	if err := rewriter.Rewrite(snapshotMutations(snapshot)); err != nil {
+	keyspaceSnapshot := e.keyspace.Snapshot()
+	if err := rewriter.Rewrite(snapshot.Commands(keyspaceSnapshot)); err != nil {
 		e.persistenceError = err
 		return 0, fmt.Errorf("rewrite append-only file: %w", err)
 	}
-	return len(snapshot), nil
+	return len(keyspaceSnapshot), nil
 }
 
 // StartAOFRewrite runs a rewrite asynchronously, matching BGREWRITEAOF's
@@ -137,37 +136,4 @@ func (e *Engine) rewriterLocked() (mutationRewriter, error) {
 		return nil, ErrRewriteUnsupported
 	}
 	return rewriter, nil
-}
-
-func snapshotMutations(snapshot []store.SnapshotEntry) [][][]byte {
-	commands := make([][][]byte, 0, len(snapshot)*2)
-	for _, entry := range snapshot {
-		key := []byte(entry.Key)
-		switch entry.Kind {
-		case store.KindString:
-			command := [][]byte{[]byte("SET"), key, entry.StringValue}
-			if !entry.ExpiresAt.IsZero() {
-				command = append(
-					command,
-					[]byte("PXAT"),
-					[]byte(strconv.FormatInt(entry.ExpiresAt.UnixMilli(), 10)),
-				)
-			}
-			commands = append(commands, command)
-		case store.KindSortedSet:
-			if len(entry.SortedSet) == 0 {
-				continue
-			}
-			command := make([][]byte, 0, 2+len(entry.SortedSet)*2)
-			command = append(command, []byte("ZADD"), key)
-			for _, item := range entry.SortedSet {
-				command = append(command, []byte(formatScore(item.Score)), []byte(item.Member))
-			}
-			commands = append(commands, command)
-			if !entry.ExpiresAt.IsZero() {
-				commands = append(commands, canonicalExpireAtMutation(key, entry.ExpiresAt))
-			}
-		}
-	}
-	return commands
 }
