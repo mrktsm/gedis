@@ -6,35 +6,41 @@
 
 <img src="assets/redis-go-logo.png" alt="Redis-Go Logo" width="220" align="right"/>
 
-A lightweight Redis implementation written in Go, featuring core Redis functionality including key-value storage and sorted sets. This project demonstrates modern Go programming practices with concurrent client handling, Redis-compatible protocol parsing, and efficient in-memory data structures.
+A Redis-compatible in-memory database written from scratch in Go to explore
+streaming protocol parsing, concurrent command execution, persistence, and
+replication.
 
-Built from the ground up to understand Redis internals, this server supports essential Redis commands and provides a solid foundation for learning distributed systems concepts.
+Gedis is undergoing a sequential rebuild. The current server implements a
+tested RESP2 networking foundation; command, storage, persistence, and
+replication milestones are tracked explicitly below.
 
 <br clear="left"/>
 
 ## Features
 
-- Basic Redis protocol support
-- Key-value operations (GET, SET, DEL)
-- Sorted Sets (ZADD, ZRANGE, ZREM)
-- TCP server implementation
-- Concurrent client handling
+- Binary-safe, bounded RESP2 parsing and encoding
+- Pipelined commands over persistent TCP connections
+- Concurrent clients with ordered per-connection execution
+- `PING`, `ECHO`, and `QUIT`
+- Configurable protocol limits and graceful shutdown
+- Unit, black-box TCP, race-detector, and fuzz coverage
 
 ## Quick Start
 
 ```bash
-# Start the server
-go run cmd/server/main.go
+# Start Gedis on the Redis default port
+go run ./cmd/gedis
 
-# Run the client
-go run cmd/client/main.go
+# Connect with an unmodified Redis client
+redis-cli PING
+redis-cli ECHO "hello from Gedis"
 ```
 
 ## Architecture
 
-- **Server**: TCP server handling Redis protocol commands
-- **Storage**: In-memory data structures with thread-safe operations
-- **Protocol**: Redis-compatible command parsing and response formatting
+- **Server**: TCP lifecycle, concurrent clients, ordered dispatch, and shutdown
+- **Protocol**: Independent streaming RESP2 parser and encoder
+- **Command engine**: Transport-independent validation and response semantics
 
 The sequential rebuild is specified in the [architecture](docs/architecture.md),
 [roadmap](docs/roadmap.md), and [engineering references](docs/references.md).
