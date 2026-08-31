@@ -35,10 +35,10 @@ func TestExpireAndPersist(t *testing.T) {
 	keyspace := New(WithClock(clock))
 	_, _ = keyspace.Set("key", []byte("value"), SetOptions{})
 
-	if !keyspace.Expire("key", 2*time.Second) {
+	if applied, _ := keyspace.Expire("key", 2*time.Second); !applied {
 		t.Fatal("Expire(existing) = false, want true")
 	}
-	if keyspace.Expire("missing", time.Second) {
+	if applied, _ := keyspace.Expire("missing", time.Second); applied {
 		t.Fatal("Expire(missing) = true, want false")
 	}
 	if !keyspace.Persist("key") {
@@ -50,7 +50,7 @@ func TestExpireAndPersist(t *testing.T) {
 	if got := keyspace.TTL("key"); got != TTLNoExpiry {
 		t.Fatalf("TTL(persisted) = %d, want %d", got, TTLNoExpiry)
 	}
-	if !keyspace.Expire("key", 0) {
+	if applied, _ := keyspace.Expire("key", 0); !applied {
 		t.Fatal("Expire(existing, 0) = false, want true")
 	}
 	if keyspace.Exists("key") != 0 {

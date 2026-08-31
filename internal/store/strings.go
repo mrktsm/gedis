@@ -25,6 +25,7 @@ type SetResult struct {
 	Previous       []byte
 	PreviousExists bool
 	Applied        bool
+	ExpiresAt      time.Time
 }
 
 type StringPair struct {
@@ -91,6 +92,7 @@ func (k *Keyspace) Set(key string, value []byte, options SetOptions) (SetResult,
 		expiresAt:  expiresAt,
 	})
 	result.Applied = true
+	result.ExpiresAt = expiresAt
 	return result, nil
 }
 

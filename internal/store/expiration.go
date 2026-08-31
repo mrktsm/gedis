@@ -49,22 +49,34 @@ func (h *expirationHeap) Pop() any {
 
 // Expire gives an existing key a relative lifetime. A non-positive lifetime
 // deletes the key immediately, matching Redis EXPIRE semantics.
-func (k *Keyspace) Expire(key string, lifetime time.Duration) bool {
+func (k *Keyspace) Expire(key string, lifetime time.Duration) (bool, time.Time) {
 	k.mutex.Lock()
 	defer k.mutex.Unlock()
 
 	now := k.clock.Now()
+	return k.expireAtLocked(key, now, now.Add(lifetime))
+}
+
+func (k *Keyspace) ExpireAt(key string, expiresAt time.Time) (bool, time.Time) {
+	k.mutex.Lock()
+	defer k.mutex.Unlock()
+
+	now := k.clock.Now()
+	return k.expireAtLocked(key, now, expiresAt)
+}
+
+func (k *Keyspace) expireAtLocked(key string, now, expiresAt time.Time) (bool, time.Time) {
 	current, exists := k.liveEntryLocked(key, now)
 	if !exists {
-		return false
+		return false, time.Time{}
 	}
-	if lifetime <= 0 {
+	if !expiresAt.After(now) {
 		delete(k.entries, key)
-		return true
+		return true, time.Time{}
 	}
-	current.expiresAt = now.Add(lifetime)
+	current.expiresAt = expiresAt
 	k.setEntryLocked(key, current)
-	return true
+	return true, expiresAt
 }
 
 func (k *Keyspace) Persist(key string) bool {

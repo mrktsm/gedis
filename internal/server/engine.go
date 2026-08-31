@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mrktsm/gedis/internal/resp"
@@ -15,13 +16,21 @@ type commandHandler func(arguments [][]byte) Result
 
 type command struct {
 	name    string
+	write   bool
 	handler commandHandler
+}
+
+type MutationSink interface {
+	Append(command [][]byte) error
 }
 
 // Result contains a command response and connection-level instructions.
 type Result struct {
 	Response resp.Value
 	Close    bool
+
+	mutation     [][]byte
+	skipMutation bool
 }
 
 // Engine validates and dispatches commands independently of the network
@@ -29,6 +38,10 @@ type Result struct {
 type Engine struct {
 	commands map[string]command
 	keyspace *store.Keyspace
+
+	writeMutex       sync.Mutex
+	mutationSink     MutationSink
+	persistenceError error
 }
 
 func NewEngine() *Engine {
@@ -36,38 +49,45 @@ func NewEngine() *Engine {
 }
 
 func NewEngineWithStore(keyspace *store.Keyspace) *Engine {
+	return NewEngineWithStoreAndSink(keyspace, nil)
+}
+
+func NewEngineWithStoreAndSink(keyspace *store.Keyspace, sink MutationSink) *Engine {
 	if keyspace == nil {
 		keyspace = store.New()
 	}
 	engine := &Engine{
-		commands: make(map[string]command),
-		keyspace: keyspace,
+		commands:     make(map[string]command),
+		keyspace:     keyspace,
+		mutationSink: sink,
 	}
-	engine.register("PING", handlePing)
-	engine.register("ECHO", handleEcho)
-	engine.register("QUIT", handleQuit)
-	engine.register("GET", engine.handleGet)
-	engine.register("SET", engine.handleSet)
-	engine.register("DEL", engine.handleDelete)
-	engine.register("EXISTS", engine.handleExists)
-	engine.register("INCR", engine.handleIncrement)
-	engine.register("INCRBY", engine.handleIncrementBy)
-	engine.register("MGET", engine.handleMGet)
-	engine.register("MSET", engine.handleMSet)
-	engine.register("TYPE", engine.handleType)
-	engine.register("EXPIRE", engine.handleExpire)
-	engine.register("PEXPIRE", engine.handlePExpire)
-	engine.register("TTL", engine.handleTTL)
-	engine.register("PTTL", engine.handlePTTL)
-	engine.register("PERSIST", engine.handlePersist)
-	engine.register("ZADD", engine.handleZAdd)
-	engine.register("ZREM", engine.handleZRem)
-	engine.register("ZSCORE", engine.handleZScore)
-	engine.register("ZCARD", engine.handleZCard)
-	engine.register("ZINCRBY", engine.handleZIncrBy)
-	engine.register("ZRANGE", engine.handleZRange)
-	engine.register("ZRANK", engine.handleZRank)
-	engine.register("ZREVRANK", engine.handleZRevRank)
+	engine.register("PING", false, handlePing)
+	engine.register("ECHO", false, handleEcho)
+	engine.register("QUIT", false, handleQuit)
+	engine.register("GET", false, engine.handleGet)
+	engine.register("SET", true, engine.handleSet)
+	engine.register("DEL", true, engine.handleDelete)
+	engine.register("EXISTS", false, engine.handleExists)
+	engine.register("INCR", true, engine.handleIncrement)
+	engine.register("INCRBY", true, engine.handleIncrementBy)
+	engine.register("MGET", false, engine.handleMGet)
+	engine.register("MSET", true, engine.handleMSet)
+	engine.register("TYPE", false, engine.handleType)
+	engine.register("EXPIRE", true, engine.handleExpire)
+	engine.register("PEXPIRE", true, engine.handlePExpire)
+	engine.register("EXPIREAT", true, engine.handleExpireAt)
+	engine.register("PEXPIREAT", true, engine.handlePExpireAt)
+	engine.register("TTL", false, engine.handleTTL)
+	engine.register("PTTL", false, engine.handlePTTL)
+	engine.register("PERSIST", true, engine.handlePersist)
+	engine.register("ZADD", true, engine.handleZAdd)
+	engine.register("ZREM", true, engine.handleZRem)
+	engine.register("ZSCORE", false, engine.handleZScore)
+	engine.register("ZCARD", false, engine.handleZCard)
+	engine.register("ZINCRBY", true, engine.handleZIncrBy)
+	engine.register("ZRANGE", false, engine.handleZRange)
+	engine.register("ZRANK", false, engine.handleZRank)
+	engine.register("ZREVRANK", false, engine.handleZRevRank)
 	return engine
 }
 
@@ -82,11 +102,32 @@ func (e *Engine) Execute(input [][]byte) Result {
 		safeName := strings.NewReplacer("\r", "\\r", "\n", "\\n").Replace(requestedName)
 		return Result{Response: resp.Error(fmt.Sprintf("ERR unknown command '%s'", safeName))}
 	}
-	return registered.handler(input[1:])
+	if !registered.write {
+		return registered.handler(input[1:])
+	}
+
+	e.writeMutex.Lock()
+	defer e.writeMutex.Unlock()
+	if e.persistenceError != nil {
+		return persistenceFailure(e.persistenceError)
+	}
+	result := registered.handler(input[1:])
+	if result.Response.Kind() == resp.KindError || result.skipMutation || e.mutationSink == nil {
+		return result
+	}
+	mutation := input
+	if result.mutation != nil {
+		mutation = result.mutation
+	}
+	if err := e.mutationSink.Append(mutation); err != nil {
+		e.persistenceError = err
+		return persistenceFailure(err)
+	}
+	return result
 }
 
-func (e *Engine) register(name string, handler commandHandler) {
-	e.commands[name] = command{name: strings.ToLower(name), handler: handler}
+func (e *Engine) register(name string, write bool, handler commandHandler) {
+	e.commands[name] = command{name: strings.ToLower(name), write: write, handler: handler}
 }
 
 func handlePing(arguments [][]byte) Result {
@@ -146,16 +187,26 @@ func (e *Engine) handleSet(arguments [][]byte) Result {
 	if err != nil {
 		return storeError(err)
 	}
+	commandResult := Result{}
+	if result.Applied {
+		commandResult.mutation = canonicalSetMutation(arguments[0], arguments[1], result.ExpiresAt)
+	} else {
+		commandResult.skipMutation = true
+	}
 	if options.ReturnPrevious {
 		if result.PreviousExists {
-			return Result{Response: resp.BulkString(result.Previous)}
+			commandResult.Response = resp.BulkString(result.Previous)
+			return commandResult
 		}
-		return Result{Response: resp.NullBulkString()}
+		commandResult.Response = resp.NullBulkString()
+		return commandResult
 	}
 	if !result.Applied {
-		return Result{Response: resp.NullBulkString()}
+		commandResult.Response = resp.NullBulkString()
+		return commandResult
 	}
-	return Result{Response: resp.SimpleString("OK")}
+	commandResult.Response = resp.SimpleString("OK")
+	return commandResult
 }
 
 func (e *Engine) handleDelete(arguments [][]byte) Result {
@@ -266,11 +317,53 @@ func (e *Engine) expire(arguments [][]byte, unit time.Duration) Result {
 	if err != nil || amount > math.MaxInt64/int64(unit) || amount < math.MinInt64/int64(unit) {
 		return Result{Response: resp.Error("ERR value is not an integer or out of range")}
 	}
-	applied := e.keyspace.Expire(string(arguments[0]), time.Duration(amount)*unit)
+	applied, expiresAt := e.keyspace.Expire(string(arguments[0]), time.Duration(amount)*unit)
 	if applied {
-		return Result{Response: resp.Integer(1)}
+		result := Result{Response: resp.Integer(1)}
+		if expiresAt.IsZero() {
+			result.mutation = [][]byte{[]byte("DEL"), arguments[0]}
+		} else {
+			result.mutation = canonicalExpireAtMutation(arguments[0], expiresAt)
+		}
+		return result
 	}
-	return Result{Response: resp.Integer(0)}
+	return Result{Response: resp.Integer(0), skipMutation: true}
+}
+
+func (e *Engine) handleExpireAt(arguments [][]byte) Result {
+	if len(arguments) != 2 {
+		return wrongArity("expireat")
+	}
+	seconds, err := strconv.ParseInt(string(arguments[1]), 10, 64)
+	if err != nil {
+		return Result{Response: resp.Error("ERR value is not an integer or out of range")}
+	}
+	return e.expireAt(arguments[0], time.Unix(seconds, 0))
+}
+
+func (e *Engine) handlePExpireAt(arguments [][]byte) Result {
+	if len(arguments) != 2 {
+		return wrongArity("pexpireat")
+	}
+	milliseconds, err := strconv.ParseInt(string(arguments[1]), 10, 64)
+	if err != nil {
+		return Result{Response: resp.Error("ERR value is not an integer or out of range")}
+	}
+	return e.expireAt(arguments[0], time.UnixMilli(milliseconds))
+}
+
+func (e *Engine) expireAt(key []byte, expiresAt time.Time) Result {
+	applied, storedDeadline := e.keyspace.ExpireAt(string(key), expiresAt)
+	if !applied {
+		return Result{Response: resp.Integer(0), skipMutation: true}
+	}
+	result := Result{Response: resp.Integer(1)}
+	if storedDeadline.IsZero() {
+		result.mutation = [][]byte{[]byte("DEL"), key}
+	} else {
+		result.mutation = canonicalExpireAtMutation(key, storedDeadline)
+	}
+	return result
 }
 
 func (e *Engine) handleTTL(arguments [][]byte) Result {
@@ -341,7 +434,7 @@ func parseSetOptions(arguments [][]byte) (store.SetOptions, error) {
 			}
 			expirationSet = true
 			options.KeepTTL = true
-		case "EX", "PX":
+		case "EX", "PX", "EXAT", "PXAT":
 			if expirationSet || index+1 >= len(arguments) {
 				return store.SetOptions{}, fmt.Errorf("ERR syntax error")
 			}
@@ -352,18 +445,45 @@ func parseSetOptions(arguments [][]byte) (store.SetOptions, error) {
 				return store.SetOptions{}, fmt.Errorf("ERR value is not an integer or out of range")
 			}
 			unit := time.Millisecond
-			if option == "EX" {
+			if option == "EX" || option == "EXAT" {
 				unit = time.Second
 			}
-			if amount <= 0 || amount > math.MaxInt64/int64(unit) {
+			if amount <= 0 || (option == "EX" || option == "PX") && amount > math.MaxInt64/int64(unit) {
 				return store.SetOptions{}, fmt.Errorf("ERR invalid expire time in 'set' command")
 			}
-			options.TTL = time.Duration(amount) * unit
+			if option == "EX" || option == "PX" {
+				options.TTL = time.Duration(amount) * unit
+			} else if option == "EXAT" {
+				options.ExpiresAt = time.Unix(amount, 0)
+			} else {
+				options.ExpiresAt = time.UnixMilli(amount)
+			}
 		default:
 			return store.SetOptions{}, fmt.Errorf("ERR syntax error")
 		}
 	}
 	return options, nil
+}
+
+func canonicalSetMutation(key, value []byte, expiresAt time.Time) [][]byte {
+	mutation := [][]byte{[]byte("SET"), key, value}
+	if !expiresAt.IsZero() {
+		mutation = append(mutation, []byte("PXAT"), []byte(strconv.FormatInt(expiresAt.UnixMilli(), 10)))
+	}
+	return mutation
+}
+
+func canonicalExpireAtMutation(key []byte, expiresAt time.Time) [][]byte {
+	return [][]byte{
+		[]byte("PEXPIREAT"),
+		key,
+		[]byte(strconv.FormatInt(expiresAt.UnixMilli(), 10)),
+	}
+}
+
+func persistenceFailure(err error) Result {
+	safeMessage := strings.NewReplacer("\r", "\\r", "\n", "\\n").Replace(err.Error())
+	return Result{Response: resp.Error("MISCONF Errors writing to the append-only file: " + safeMessage)}
 }
 
 func byteKeysToStrings(values [][]byte) []string {

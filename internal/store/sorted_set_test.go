@@ -190,7 +190,7 @@ func TestZSetWrongTypeAndExpiration(t *testing.T) {
 	}
 
 	_, _ = keyspace.ZAdd("expiring", []ZUpdate{{Member: "member", Score: 1}}, ZAddOptions{})
-	keyspace.Expire("expiring", time.Second)
+	_, _ = keyspace.Expire("expiring", time.Second)
 	_, _ = keyspace.ZAdd("expiring", []ZUpdate{{Member: "member", Score: 2}}, ZAddOptions{})
 	clock.Advance(time.Second)
 	if size, err := keyspace.ZCard("expiring"); err != nil || size != 0 {
