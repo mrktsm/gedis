@@ -8,10 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"redis-in-go/pkg/protocol"
-	"redis-in-go/pkg/storage"
+	"github.com/mrktsm/gedis/pkg/protocol"
+	"github.com/mrktsm/gedis/pkg/storage"
 )
-
 
 var dataStore = make(map[string]string)
 var dataStoreMutex sync.RWMutex
@@ -38,7 +37,7 @@ func executeCommand(cmd []string) (uint32, []byte) {
 		if len(cmd) != 2 {
 			return 1, []byte("ERR wrong number of arguments for 'del' command")
 		}
-		return handleDel(cmd[1])	
+		return handleDel(cmd[1])
 	case "ZADD":
 		if len(cmd) != 4 {
 			return 1, []byte("ERR wrong number of arguments for 'zadd' command")
@@ -118,20 +117,20 @@ func handleZAdd(key, scoreStr, member string) (uint32, []byte) {
 }
 
 func handleZRem(key, member string) (uint32, []byte) {
-    dataStoreMutex.RLock()
-    zset, exists := sortedSets[key]
-    dataStoreMutex.RUnlock()
+	dataStoreMutex.RLock()
+	zset, exists := sortedSets[key]
+	dataStoreMutex.RUnlock()
 
-    if !exists {
-        return 1, []byte("ERR key not found")
-    }
+	if !exists {
+		return 1, []byte("ERR key not found")
+	}
 
-    removed := zset.Remove(member)
-    if !removed {
-        return 1, []byte("ERR member not found")
-    }
+	removed := zset.Remove(member)
+	if !removed {
+		return 1, []byte("ERR member not found")
+	}
 
-    return 0, []byte("OK")
+	return 0, []byte("OK")
 }
 
 func handleZScore(key, member string) (uint32, []byte) {
@@ -151,7 +150,6 @@ func handleZScore(key, member string) (uint32, []byte) {
 	response := fmt.Sprintf("%.1f", score)
 	return 0, []byte(response)
 }
-
 
 func handleZRange(key, minStr, maxStr string) (uint32, []byte) {
 	min, err := strconv.ParseFloat(minStr, 64)
@@ -175,15 +173,15 @@ func handleZRange(key, minStr, maxStr string) (uint32, []byte) {
 	entries := zset.Range(min, max)
 	var result []string
 	for _, entry := range entries {
-        result = append(result, fmt.Sprintf("%s:%.1f", entry.Member, entry.Score))
+		result = append(result, fmt.Sprintf("%s:%.1f", entry.Member, entry.Score))
 	}
 
 	if len(result) == 0 {
 		return 0, []byte("[]")
 	}
 
-    response := fmt.Sprintf("[%s]", strings.Join(result, ","))
-    return 0, []byte(response)
+	response := fmt.Sprintf("[%s]", strings.Join(result, ","))
+	return 0, []byte(response)
 }
 
 func handleZIncrBy(key, incrementStr, member string) (uint32, []byte) {
@@ -202,7 +200,7 @@ func handleZIncrBy(key, incrementStr, member string) (uint32, []byte) {
 	}
 
 	newScore := zset.IncrBy(increment, member)
-	
+
 	response := fmt.Sprintf("%.1f", newScore)
 	return 0, []byte(response)
 }
@@ -222,7 +220,7 @@ func handleRequest(c net.Conn) error {
 
 	// Execute the command
 	status, responseData := executeCommand(cmd)
-	
+
 	// Send the response
 	return protocol.SendResponse(c, status, responseData)
 }
@@ -252,5 +250,3 @@ func main() {
 		}(conn)
 	}
 }
-
-

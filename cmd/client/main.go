@@ -6,18 +6,18 @@ import (
 	"log"
 	"net"
 
-	"redis-in-go/pkg/protocol"
+	"github.com/mrktsm/gedis/pkg/protocol"
 )
 
 func sendCommand(conn net.Conn, cmd []string) error {
 	// Convert command array to the format the server expects
 	var cmdBytes []byte
-	
+
 	// Add number of strings (4 bytes, little endian)
 	nstrBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(nstrBytes, uint32(len(cmd)))
 	cmdBytes = append(cmdBytes, nstrBytes...)
-	
+
 	// Add each string with its length prefix
 	for _, str := range cmd {
 		strBytes := []byte(str)
@@ -52,14 +52,14 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("=== Testing Redis ZSet Commands ===")
-	
+
 	// Test basic key-value commands first
 	fmt.Println("\n1. Testing basic commands:")
 	err = sendCommand(conn, []string{"SET", "mykey", "myvalue"})
 	if err != nil {
 		log.Fatal("Failed to send SET:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"GET", "mykey"})
 	if err != nil {
 		log.Fatal("Failed to send GET:", err)
@@ -71,17 +71,17 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to send ZADD:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"ZADD", "leaderboard", "2000", "player2"})
 	if err != nil {
 		log.Fatal("Failed to send ZADD:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"ZADD", "leaderboard", "1200", "player3"})
 	if err != nil {
 		log.Fatal("Failed to send ZADD:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"ZADD", "leaderboard", "1800", "player4"})
 	if err != nil {
 		log.Fatal("Failed to send ZADD:", err)
@@ -93,7 +93,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to send ZSCORE:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"ZSCORE", "leaderboard", "player2"})
 	if err != nil {
 		log.Fatal("Failed to send ZSCORE:", err)
@@ -119,12 +119,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to send ZINCRBY:", err)
 	}
-	
+
 	err = sendCommand(conn, []string{"ZINCRBY", "leaderboard", "-100", "player2"})
 	if err != nil {
 		log.Fatal("Failed to send ZINCRBY:", err)
 	}
-	
+
 	// Test ZINCRBY with new member
 	err = sendCommand(conn, []string{"ZINCRBY", "leaderboard", "1000", "newplayer"})
 	if err != nil {
@@ -140,13 +140,13 @@ func main() {
 
 	// Test edge cases
 	fmt.Println("\n8. Testing edge cases:")
-	
+
 	// Try to get score of non-existent member
 	err = sendCommand(conn, []string{"ZSCORE", "leaderboard", "nonexistent"})
 	if err != nil {
 		log.Fatal("Failed to send ZSCORE:", err)
 	}
-	
+
 	// Try to get range from non-existent key
 	err = sendCommand(conn, []string{"ZRANGE", "nonexistent", "0", "100"})
 	if err != nil {
