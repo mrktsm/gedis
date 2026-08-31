@@ -152,11 +152,101 @@ func TestAbsoluteExpirationSurvivesReplayDelay(t *testing.T) {
 	}
 }
 
+func TestRewriteAOFUsesDeterministicMinimalMutations(t *testing.T) {
+	t.Parallel()
+
+	clock := &engineFakeClock{now: time.Unix(100, 0)}
+	keyspace := store.New(store.WithClock(clock))
+	sink := &rewriteRecordingSink{}
+	engine := NewEngineWithStoreAndSink(keyspace, sink)
+	assertResponse(t, engine, []string{"SET", "message", "old"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"SET", "message", "current", "PX", "10000"}, resp.SimpleString("OK"))
+	assertResponse(t, engine, []string{"ZADD", "leaders", "20", "bravo", "10", "alpha"}, resp.Integer(2))
+	assertResponse(t, engine, []string{"PEXPIRE", "leaders", "5000"}, resp.Integer(1))
+
+	keys, err := engine.RewriteAOF()
+	if err != nil {
+		t.Fatalf("RewriteAOF() error = %v", err)
+	}
+	if keys != 2 {
+		t.Fatalf("RewriteAOF() keys = %d, want 2", keys)
+	}
+	want := [][][]byte{
+		{
+			[]byte("ZADD"), []byte("leaders"),
+			[]byte("10"), []byte("alpha"),
+			[]byte("20"), []byte("bravo"),
+		},
+		{[]byte("PEXPIREAT"), []byte("leaders"), []byte("105000")},
+		{[]byte("SET"), []byte("message"), []byte("current"), []byte("PXAT"), []byte("110000")},
+	}
+	if !reflect.DeepEqual(sink.rewritten, want) {
+		t.Fatalf("rewritten commands = %q, want %q", sink.rewritten, want)
+	}
+}
+
+func TestRewriteAOFFailureBlocksLaterWrites(t *testing.T) {
+	t.Parallel()
+
+	rewriteError := errors.New("rewrite disk failure")
+	sink := &rewriteRecordingSink{rewriteError: rewriteError}
+	engine := NewEngineWithStoreAndSink(store.New(), sink)
+	assertResponse(t, engine, []string{"SET", "key", "value"}, resp.SimpleString("OK"))
+
+	if _, err := engine.RewriteAOF(); !errors.Is(err, rewriteError) {
+		t.Fatalf("RewriteAOF() error = %v, want rewrite failure", err)
+	}
+	response := engine.Execute(stringsToBytes([]string{"DEL", "key"})).Response
+	if response.Kind() != resp.KindError || !strings.HasPrefix(string(response.Bytes()), "MISCONF ") {
+		t.Fatalf("DEL after rewrite failure = kind %q, %q", response.Kind(), response.Bytes())
+	}
+	assertResponse(t, engine, []string{"GET", "key"}, resp.BulkStringString("value"))
+}
+
+func TestRewriteAOFRequiresRewriteCapablePersistence(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewEngine().RewriteAOF(); !errors.Is(err, ErrPersistenceDisabled) {
+		t.Fatalf("RewriteAOF(no sink) error = %v, want ErrPersistenceDisabled", err)
+	}
+	if _, err := NewEngineWithStoreAndSink(store.New(), &recordingSink{}).RewriteAOF(); !errors.Is(err, ErrRewriteUnsupported) {
+		t.Fatalf("RewriteAOF(append-only sink) error = %v, want ErrRewriteUnsupported", err)
+	}
+}
+
 type recordingSink struct {
 	mutex    sync.Mutex
 	commands [][][]byte
 	err      error
 	calls    int
+}
+
+type rewriteRecordingSink struct {
+	rewritten    [][][]byte
+	rewriteError error
+}
+
+func (s *rewriteRecordingSink) Append(_ [][]byte) error {
+	return nil
+}
+
+func (s *rewriteRecordingSink) Rewrite(commands [][][]byte) error {
+	if s.rewriteError != nil {
+		return s.rewriteError
+	}
+	s.rewritten = make([][][]byte, len(commands))
+	for index, command := range commands {
+		s.rewritten[index] = cloneByteCommand(command)
+	}
+	return nil
+}
+
+func cloneByteCommand(command [][]byte) [][]byte {
+	cloned := make([][]byte, len(command))
+	for index, argument := range command {
+		cloned[index] = append([]byte(nil), argument...)
+	}
+	return cloned
 }
 
 func (s *recordingSink) Append(command [][]byte) error {
