@@ -44,6 +44,7 @@ type Config struct {
 type Log struct {
 	mutex  sync.Mutex
 	file   *os.File
+	path   string
 	policy SyncPolicy
 
 	backgroundError error
@@ -75,6 +76,7 @@ func Open(config Config) (*Log, error) {
 		return nil, fmt.Errorf("aof: open: %w", err)
 	}
 	log.file = file
+	log.path = config.Path
 
 	if config.SyncPolicy == SyncEverySecond {
 		log.stopSync = make(chan struct{})
