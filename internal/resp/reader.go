@@ -42,6 +42,10 @@ func (e *ProtocolError) Error() string {
 	return "RESP protocol error: " + e.message
 }
 
+func (e *ProtocolError) Message() string {
+	return e.message
+}
+
 // Reader incrementally decodes RESP2 values from a stream.
 type Reader struct {
 	reader *bufio.Reader

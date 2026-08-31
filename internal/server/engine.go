@@ -42,7 +42,8 @@ func (e *Engine) Execute(input [][]byte) Result {
 	requestedName := string(input[0])
 	registered, ok := e.commands[strings.ToUpper(requestedName)]
 	if !ok {
-		return Result{Response: resp.Error(fmt.Sprintf("ERR unknown command '%s'", requestedName))}
+		safeName := strings.NewReplacer("\r", "\\r", "\n", "\\n").Replace(requestedName)
+		return Result{Response: resp.Error(fmt.Sprintf("ERR unknown command '%s'", safeName))}
 	}
 	return registered.handler(input[1:])
 }

@@ -46,6 +46,11 @@ func TestEngineExecute(t *testing.T) {
 			want:    Result{Response: resp.Error("ERR unknown command 'NoSuchCommand'")},
 		},
 		{
+			name:    "unknown command escapes line endings",
+			command: []string{"bad\r\ncommand"},
+			want:    Result{Response: resp.Error("ERR unknown command 'bad\\r\\ncommand'")},
+		},
+		{
 			name:    "empty command",
 			command: nil,
 			want:    Result{Response: resp.Error("ERR empty command")},
