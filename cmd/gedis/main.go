@@ -37,6 +37,7 @@ type options struct {
 	replBacklogBytes      int
 	replSubscriberQueue   int
 	replicaOf             string
+	replicaStatePath      string
 	replicaSyncTimeout    time.Duration
 	replicaDialTimeout    time.Duration
 	replicaReconnectDelay time.Duration
@@ -60,6 +61,7 @@ func run(arguments []string, output io.Writer) int {
 func runServer(options options, logger *slog.Logger) (exitCode int) {
 	keyspace := store.New()
 	var durableSink replication.MutationSink
+	var appendLog *aof.Log
 	if options.appendOnly {
 		replay, repaired, err := recoverAOF(options.aofPath, keyspace, options.repairAOF)
 		if err != nil {
@@ -74,7 +76,7 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			"repaired", repaired,
 		)
 
-		appendLog, err := aof.Open(aof.Config{
+		appendLog, err = aof.Open(aof.Config{
 			Path:       options.aofPath,
 			SyncPolicy: options.aofSyncPolicy,
 		})
@@ -110,12 +112,34 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			return 1
 		}
 		engine.SetReadOnly(true)
+		statePath := resolveReplicaStatePath(options)
+		var initialState *replication.PersistentState
+		if statePath != "" {
+			_, _, aofSize, infoErr := appendLog.AOFInfo()
+			if infoErr != nil {
+				logger.Warn("replica checkpoint ignored", "path", statePath, "error", infoErr)
+			} else {
+				initialState, err = loadReplicaState(statePath, options.replicaOf, aofSize)
+				if err != nil {
+					logger.Warn("replica checkpoint ignored", "path", statePath, "error", err)
+					initialState = nil
+				} else if initialState != nil {
+					logger.Info(
+						"replica checkpoint loaded",
+						"path", statePath,
+						"replication_id", initialState.ReplicationID,
+						"offset", initialState.Offset,
+					)
+				}
+			}
+		}
 		replica, err := replication.NewReplica(replication.ReplicaConfig{
 			PrimaryAddress:   options.replicaOf,
 			ListeningPort:    listeningPort,
 			DialTimeout:      options.replicaDialTimeout,
 			ReconnectDelay:   options.replicaReconnectDelay,
 			MaxSnapshotBytes: options.replMaxSnapshotBytes,
+			InitialState:     initialState,
 		}, engine)
 		if err != nil {
 			logger.Error("failed to initialize replica", "primary", options.replicaOf, "error", err)
@@ -131,11 +155,16 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 				<-timer.C
 			}
 			stats := replica.Stats()
+			syncMode := "full"
+			if stats.PartialSyncs > 0 {
+				syncMode = "partial"
+			}
 			logger.Info(
 				"replica synchronized",
 				"primary", options.replicaOf,
 				"replication_id", stats.ReplicationID,
 				"offset", stats.Offset,
+				"sync_mode", syncMode,
 			)
 		case <-timer.C:
 			stopReplica()
@@ -148,6 +177,13 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			if err := <-replicaDone; err != nil {
 				logger.Error("replica stopped", "error", err)
 				exitCode = 1
+			}
+			if statePath != "" {
+				engine.WaitForAOFRewrite()
+				if err := saveReplicaState(statePath, replica, appendLog); err != nil {
+					logger.Error("failed to save replica checkpoint", "path", statePath, "error", err)
+					exitCode = 1
+				}
 			}
 		}()
 	}
@@ -236,6 +272,7 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 	flags.IntVar(&parsed.replBacklogBytes, "repl-backlog-bytes", 1024*1024, "maximum retained replication stream bytes")
 	flags.IntVar(&parsed.replSubscriberQueue, "repl-subscriber-queue", 256, "maximum queued mutations per replica")
 	flags.StringVar(&parsed.replicaOf, "replicaof", "", "upstream Gedis primary address as host:port")
+	flags.StringVar(&parsed.replicaStatePath, "replica-state-path", "", "replication checkpoint path; defaults to <aof-path>.replstate")
 	flags.DurationVar(&parsed.replicaSyncTimeout, "replica-sync-timeout", 10*time.Second, "maximum initial replica synchronization wait")
 	flags.DurationVar(&parsed.replicaDialTimeout, "replica-dial-timeout", 5*time.Second, "timeout connecting to the primary")
 	flags.DurationVar(&parsed.replicaReconnectDelay, "replica-reconnect-delay", 250*time.Millisecond, "delay before reconnecting to the primary")
@@ -288,6 +325,12 @@ func parseOptions(arguments []string, output io.Writer) (options, error) {
 		if err != nil || parsedPort <= 0 || parsedPort > 65535 {
 			return options{}, errors.New("replicaof port must be between 1 and 65535")
 		}
+	}
+	if parsed.replicaStatePath != "" && parsed.replicaOf == "" {
+		return options{}, errors.New("replica-state-path requires replicaof")
+	}
+	if parsed.replicaStatePath != "" && !parsed.appendOnly {
+		return options{}, errors.New("replica-state-path requires appendonly")
 	}
 	return parsed, nil
 }

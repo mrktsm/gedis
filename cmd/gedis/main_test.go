@@ -59,6 +59,7 @@ func TestParseOptionsOverrides(t *testing.T) {
 		"-repl-backlog-bytes", "4096",
 		"-repl-subscriber-queue", "8",
 		"-replicaof", "primary.example:6379",
+		"-replica-state-path", "state/replica.json",
 		"-replica-sync-timeout", "4s",
 		"-replica-dial-timeout", "2s",
 		"-replica-reconnect-delay", "50ms",
@@ -81,6 +82,7 @@ func TestParseOptionsOverrides(t *testing.T) {
 		replBacklogBytes:      4096,
 		replSubscriberQueue:   8,
 		replicaOf:             "primary.example:6379",
+		replicaStatePath:      "state/replica.json",
 		replicaSyncTimeout:    4 * time.Second,
 		replicaDialTimeout:    2 * time.Second,
 		replicaReconnectDelay: 50 * time.Millisecond,
@@ -113,6 +115,8 @@ func TestParseOptionsRejectsInvalidInput(t *testing.T) {
 		{"-replicaof", "missing-port"},
 		{"-replicaof", ":6379"},
 		{"-replicaof", "primary:70000"},
+		{"-replica-state-path", "state/replica.json"},
+		{"-replicaof", "primary:6379", "-replica-state-path", "state/replica.json"},
 	} {
 		if _, err := parseOptions(arguments, io.Discard); err == nil {
 			t.Fatalf("parseOptions(%q) error = nil, want error", arguments)
