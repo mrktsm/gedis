@@ -37,6 +37,11 @@ jobs:
           go mod tidy
           git diff --exit-code
 
+      - name: Verify generated command table
+        run: |
+          go run ./cmd/gedis-command-docs > /tmp/gedis-commands.md
+          diff -u docs/commands.md /tmp/gedis-commands.md
+
       - name: Vet
         run: go vet ./...
 
