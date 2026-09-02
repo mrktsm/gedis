@@ -50,6 +50,7 @@ type PrimaryStats struct {
 	ReplicationID     string
 	Offset            int64
 	BacklogFirstByte  int64
+	BacklogCapacity   int
 	BacklogBytes      int
 	ConnectedReplicas int
 }
@@ -231,6 +232,7 @@ func (p *Primary) Stats() PrimaryStats {
 		ReplicationID:     p.id,
 		Offset:            p.backlog.Offset(),
 		BacklogFirstByte:  p.backlog.FirstOffset(),
+		BacklogCapacity:   p.backlog.Capacity(),
 		BacklogBytes:      p.backlog.HistoryLength(),
 		ConnectedReplicas: len(p.subscribers),
 	}

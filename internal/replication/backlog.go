@@ -66,6 +66,12 @@ func (b *Backlog) HistoryLength() int {
 	return len(b.data)
 }
 
+func (b *Backlog) Capacity() int {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.capacity
+}
+
 // After returns bytes whose offsets are strictly greater than offset. The
 // request succeeds when offset is current or is immediately before any byte
 // still retained in the backlog.

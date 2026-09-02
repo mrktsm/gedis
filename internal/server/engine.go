@@ -44,6 +44,8 @@ type Engine struct {
 	mutationSink     MutationSink
 	persistenceError error
 	readOnly         atomic.Bool
+	replicationMutex sync.RWMutex
+	replicationInfo  replicationInfoProvider
 
 	rewriteMutex     sync.Mutex
 	rewriteRunning   bool
@@ -159,6 +161,12 @@ func (e *Engine) SetReadOnly(readOnly bool) {
 
 func (e *Engine) ReadOnly() bool {
 	return e.readOnly.Load()
+}
+
+func (e *Engine) SetReplicationInfoProvider(provider replicationInfoProvider) {
+	e.replicationMutex.Lock()
+	e.replicationInfo = provider
+	e.replicationMutex.Unlock()
 }
 
 func (e *Engine) register(name string, write bool, handler commandHandler) {

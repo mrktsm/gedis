@@ -65,11 +65,92 @@ func TestInfoReportsInspectionFailure(t *testing.T) {
 	}
 }
 
+func TestInfoReplicationReportsPrimaryBacklog(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	engine.SetReplicationInfoProvider(staticReplicationInfo{info: ReplicationInfo{
+		Role:                   "master",
+		ReplicationID:          "0123456789abcdef0123456789abcdef01234567",
+		Offset:                 123,
+		ConnectedReplicas:      2,
+		BacklogActive:          true,
+		BacklogSize:            1024,
+		BacklogFirstByteOffset: 24,
+		BacklogHistoryLength:   100,
+	}})
+	response := engine.Execute(stringsToBytes([]string{"INFO", "replication"})).Response
+	if !strings.HasPrefix(string(response.Bytes()), "# Replication\r\n") {
+		t.Fatalf("INFO replication = %q", response.Bytes())
+	}
+	assertInfoFieldValues(t, string(response.Bytes()), map[string]string{
+		"role":                           "master",
+		"connected_slaves":               "2",
+		"master_replid":                  "0123456789abcdef0123456789abcdef01234567",
+		"master_repl_offset":             "123",
+		"repl_backlog_active":            "1",
+		"repl_backlog_size":              "1024",
+		"repl_backlog_first_byte_offset": "24",
+		"repl_backlog_histlen":           "100",
+	})
+}
+
+func TestInfoReplicationReportsReplicaLinkAndGedisCounters(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	engine.SetReplicationInfoProvider(staticReplicationInfo{info: ReplicationInfo{
+		Role:                  "slave",
+		PrimaryHost:           "primary.example",
+		PrimaryPort:           6379,
+		PrimaryLinkUp:         true,
+		ReplicaReadOffset:     456,
+		ReplicaAppliedOffset:  456,
+		ReplicaReadOnly:       true,
+		UpstreamReplicationID: "abcdef0123456789abcdef0123456789abcdef01",
+		FullSyncs:             1,
+		PartialSyncs:          2,
+		Reconnects:            3,
+		LastError:             "line one\r\nline two",
+	}})
+	response := engine.Execute(stringsToBytes([]string{"INFO", "replication"})).Response
+	assertInfoFieldValues(t, string(response.Bytes()), map[string]string{
+		"role":                            "slave",
+		"master_host":                     "primary.example",
+		"master_port":                     "6379",
+		"master_link_status":              "up",
+		"master_sync_in_progress":         "0",
+		"slave_read_repl_offset":          "456",
+		"slave_repl_offset":               "456",
+		"slave_read_only":                 "1",
+		"gedis_upstream_replid":           "abcdef0123456789abcdef0123456789abcdef01",
+		"gedis_replication_full_syncs":    "1",
+		"gedis_replication_partial_syncs": "2",
+		"gedis_replication_reconnects":    "3",
+		"gedis_replication_last_error":    "line one\\r\\nline two",
+	})
+}
+
+func TestInfoCanSelectMultipleSections(t *testing.T) {
+	t.Parallel()
+
+	response := NewEngine().Execute(stringsToBytes([]string{"INFO", "persistence", "replication"})).Response
+	text := string(response.Bytes())
+	if !strings.Contains(text, "# Persistence\r\n") || !strings.Contains(text, "\r\n# Replication\r\n") {
+		t.Fatalf("INFO sections = %q", text)
+	}
+}
+
 func assertInfoFields(t *testing.T, info string, want map[string]string) {
 	t.Helper()
 	if !strings.HasPrefix(info, "# Persistence\r\n") {
 		t.Fatalf("INFO = %q, want Persistence section header", info)
 	}
+	assertInfoFieldValues(t, info, want)
+}
+
+func assertInfoFieldValues(t *testing.T, info string, want map[string]string) {
+	t.Helper()
 	got := make(map[string]string)
 	for _, line := range strings.Split(info, "\r\n") {
 		name, value, found := strings.Cut(line, ":")
@@ -82,6 +163,14 @@ func assertInfoFields(t *testing.T, info string, want map[string]string) {
 			t.Errorf("INFO field %s = %q, want %q", name, got[name], value)
 		}
 	}
+}
+
+type staticReplicationInfo struct {
+	info ReplicationInfo
+}
+
+func (s staticReplicationInfo) ReplicationInfo() ReplicationInfo {
+	return s.info
 }
 
 type infoRewriteSink struct {

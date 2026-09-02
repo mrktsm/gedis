@@ -44,6 +44,7 @@ type ReplicaConfig struct {
 type ReplicaStats struct {
 	PrimaryAddress string
 	Connected      bool
+	Syncing        bool
 	ReplicationID  string
 	Offset         int64
 	FullSyncs      int64
@@ -144,6 +145,7 @@ func (r *Replica) Stats() ReplicaStats {
 // errors are recorded in Stats and retried after ReconnectDelay.
 func (r *Replica) Run(ctx context.Context) error {
 	for {
+		r.setSyncing()
 		err := r.synchronize(ctx)
 		if ctx.Err() != nil {
 			r.setDisconnected("")
@@ -314,6 +316,7 @@ func (r *Replica) resumePoint() (string, int64) {
 func (r *Replica) setConnected() {
 	r.mutex.Lock()
 	r.stats.Connected = true
+	r.stats.Syncing = false
 	r.stats.LastError = ""
 	r.mutex.Unlock()
 	r.once.Do(func() { close(r.ready) })
@@ -322,7 +325,15 @@ func (r *Replica) setConnected() {
 func (r *Replica) setDisconnected(lastError string) {
 	r.mutex.Lock()
 	r.stats.Connected = false
+	r.stats.Syncing = false
 	r.stats.LastError = lastError
+	r.mutex.Unlock()
+}
+
+func (r *Replica) setSyncing() {
+	r.mutex.Lock()
+	r.stats.Connected = false
+	r.stats.Syncing = true
 	r.mutex.Unlock()
 }
 

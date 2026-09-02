@@ -103,6 +103,8 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 		return 1
 	}
 	engine := server.NewEngineWithStoreAndSink(keyspace, primary)
+	replicationInfo := replication.NewInfoProvider(primary)
+	engine.SetReplicationInfoProvider(replicationInfo)
 	primary.SetSnapshotter(engine)
 	defer engine.WaitForAOFRewrite()
 	if options.replicaOf != "" {
@@ -145,6 +147,7 @@ func runServer(options options, logger *slog.Logger) (exitCode int) {
 			logger.Error("failed to initialize replica", "primary", options.replicaOf, "error", err)
 			return 1
 		}
+		replicationInfo.SetReplica(replica)
 		replicaContext, stopReplica := context.WithCancel(context.Background())
 		replicaDone := make(chan error, 1)
 		go func() { replicaDone <- replica.Run(replicaContext) }()
