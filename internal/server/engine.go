@@ -46,6 +46,8 @@ type Engine struct {
 	readOnly         atomic.Bool
 	replicationMutex sync.RWMutex
 	replicationInfo  replicationInfoProvider
+	runtimeMutex     sync.RWMutex
+	runtimeInfo      runtimeInfoProvider
 
 	rewriteMutex     sync.Mutex
 	rewriteRunning   bool
@@ -167,6 +169,12 @@ func (e *Engine) SetReplicationInfoProvider(provider replicationInfoProvider) {
 	e.replicationMutex.Lock()
 	e.replicationInfo = provider
 	e.replicationMutex.Unlock()
+}
+
+func (e *Engine) setRuntimeInfoProvider(provider runtimeInfoProvider) {
+	e.runtimeMutex.Lock()
+	e.runtimeInfo = provider
+	e.runtimeMutex.Unlock()
 }
 
 func (e *Engine) register(name string, write bool, handler commandHandler) {

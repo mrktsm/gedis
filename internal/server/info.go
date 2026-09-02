@@ -15,6 +15,19 @@ type replicationInfoProvider interface {
 	ReplicationInfo() ReplicationInfo
 }
 
+type runtimeInfoProvider interface {
+	RuntimeInfo() RuntimeInfo
+}
+
+type RuntimeInfo struct {
+	ConnectedClients  int
+	ConnectedReplicas int
+	TotalConnections  uint64
+	TotalCommands     uint64
+	CommandErrors     uint64
+	ProtocolErrors    uint64
+}
+
 // ReplicationInfo contains only state with a defined meaning in Gedis. Redis
 // field names are used where semantics align; Gedis-only evidence is prefixed.
 type ReplicationInfo struct {
@@ -50,6 +63,14 @@ func (e *Engine) handleInfo(arguments [][]byte) Result {
 	if requestsInfoSection(arguments, "REPLICATION") {
 		writeInfoSeparator(&info)
 		e.writeReplicationInfo(&info)
+	}
+	if requestsInfoSection(arguments, "CLIENTS") {
+		writeInfoSeparator(&info)
+		e.writeClientsInfo(&info)
+	}
+	if requestsInfoSection(arguments, "STATS") {
+		writeInfoSeparator(&info)
+		e.writeStatsInfo(&info)
 	}
 	return Result{Response: resp.BulkStringString(info.String())}
 }
@@ -130,6 +151,35 @@ func (e *Engine) writeReplicationInfo(info *strings.Builder) {
 			writeInfoField(info, "gedis_replication_last_error", sanitizeInfoValue(state.LastError))
 		}
 	}
+}
+
+func (e *Engine) writeClientsInfo(info *strings.Builder) {
+	state := e.runtimeInfoSnapshot()
+	info.WriteString("# Clients\r\n")
+	writeInfoField(info, "connected_clients", strconv.Itoa(state.ConnectedClients))
+	writeInfoField(info, "blocked_clients", "0")
+	writeInfoField(info, "gedis_connected_replica_connections", strconv.Itoa(state.ConnectedReplicas))
+	writeInfoField(info, "gedis_connected_connections", strconv.Itoa(state.ConnectedClients+state.ConnectedReplicas))
+}
+
+func (e *Engine) writeStatsInfo(info *strings.Builder) {
+	state := e.runtimeInfoSnapshot()
+	info.WriteString("# Stats\r\n")
+	writeInfoField(info, "total_connections_received", strconv.FormatUint(state.TotalConnections, 10))
+	writeInfoField(info, "total_commands_processed", strconv.FormatUint(state.TotalCommands, 10))
+	writeInfoField(info, "rejected_connections", "0")
+	writeInfoField(info, "gedis_command_errors", strconv.FormatUint(state.CommandErrors, 10))
+	writeInfoField(info, "gedis_protocol_errors", strconv.FormatUint(state.ProtocolErrors, 10))
+}
+
+func (e *Engine) runtimeInfoSnapshot() RuntimeInfo {
+	e.runtimeMutex.RLock()
+	provider := e.runtimeInfo
+	e.runtimeMutex.RUnlock()
+	if provider == nil {
+		return RuntimeInfo{}
+	}
+	return provider.RuntimeInfo()
 }
 
 func requestsInfoSection(arguments [][]byte, section string) bool {

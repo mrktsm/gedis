@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrktsm/gedis/internal/resp"
@@ -34,6 +35,20 @@ type ConnectionCommandHandler interface {
 	) (handled bool, terminal bool, err error)
 }
 
+type ConnectionRole uint8
+
+const (
+	ConnectionRoleClient ConnectionRole = iota
+	ConnectionRoleReplica
+)
+
+// ConnectionRoleClassifier identifies commands that turn a normal client
+// socket into a long-lived replica stream. Classification happens before the
+// terminal handler blocks in that stream.
+type ConnectionRoleClassifier interface {
+	ClassifyConnectionCommand(command [][]byte) ConnectionRole
+}
+
 func DefaultConfig() Config {
 	return Config{ProtocolLimits: resp.DefaultLimits}
 }
@@ -45,11 +60,16 @@ type Server struct {
 
 	mutex       sync.Mutex
 	listener    net.Listener
-	connections map[net.Conn]struct{}
+	connections map[net.Conn]ConnectionRole
 	closing     bool
 	waitGroup   sync.WaitGroup
 	lifecycle   context.Context
 	stop        context.CancelFunc
+
+	totalConnections atomic.Uint64
+	totalCommands    atomic.Uint64
+	commandErrors    atomic.Uint64
+	protocolErrors   atomic.Uint64
 }
 
 func New(config Config, engine *Engine) *Server {
@@ -57,13 +77,15 @@ func New(config Config, engine *Engine) *Server {
 		engine = NewEngine()
 	}
 	lifecycle, stop := context.WithCancel(context.Background())
-	return &Server{
+	server := &Server{
 		config:      config,
 		engine:      engine,
-		connections: make(map[net.Conn]struct{}),
+		connections: make(map[net.Conn]ConnectionRole),
 		lifecycle:   lifecycle,
 		stop:        stop,
 	}
+	engine.setRuntimeInfoProvider(server)
+	return server
 }
 
 // Serve accepts connections until Shutdown is called or the listener fails.
@@ -172,19 +194,30 @@ func (s *Server) serveConnection(connection net.Conn) {
 		if err != nil {
 			var protocolError *resp.ProtocolError
 			if errors.As(err, &protocolError) {
+				s.protocolErrors.Add(1)
 				s.writeResponse(connection, bufferedWriter, writer, resp.Error(
 					"ERR Protocol error: "+protocolError.Message(),
 				))
 			}
 			return
 		}
+		s.totalCommands.Add(1)
 		if handler := s.config.ConnectionCommandHandler; handler != nil {
+			classifiedReplica := false
+			if classifier, ok := handler.(ConnectionRoleClassifier); ok &&
+				classifier.ClassifyConnectionCommand(command) == ConnectionRoleReplica {
+				s.setConnectionRole(connection, ConnectionRoleReplica)
+				classifiedReplica = true
+			}
 			handled, terminal, err := handler.HandleConnectionCommand(
 				s.lifecycle,
 				command,
 				connection,
 				bufferedWriter,
 			)
+			if classifiedReplica && (!handled || !terminal) {
+				s.setConnectionRole(connection, ConnectionRoleClient)
+			}
 			if err != nil {
 				return
 			}
@@ -197,6 +230,9 @@ func (s *Server) serveConnection(connection net.Conn) {
 		}
 
 		result := s.engine.Execute(command)
+		if result.Response.Kind() == resp.KindError {
+			s.commandErrors.Add(1)
+		}
 		if err := s.writeResponse(connection, bufferedWriter, writer, result.Response); err != nil {
 			return
 		}
@@ -228,9 +264,18 @@ func (s *Server) trackConnection(connection net.Conn) bool {
 	if s.closing {
 		return false
 	}
-	s.connections[connection] = struct{}{}
+	s.connections[connection] = ConnectionRoleClient
+	s.totalConnections.Add(1)
 	s.waitGroup.Add(1)
 	return true
+}
+
+func (s *Server) setConnectionRole(connection net.Conn, role ConnectionRole) {
+	s.mutex.Lock()
+	if _, exists := s.connections[connection]; exists {
+		s.connections[connection] = role
+	}
+	s.mutex.Unlock()
 }
 
 func (s *Server) untrackConnection(connection net.Conn) {
@@ -244,4 +289,26 @@ func (s *Server) isClosing() bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.closing
+}
+
+func (s *Server) RuntimeInfo() RuntimeInfo {
+	s.mutex.Lock()
+	connectedClients := 0
+	connectedReplicas := 0
+	for _, role := range s.connections {
+		if role == ConnectionRoleReplica {
+			connectedReplicas++
+		} else {
+			connectedClients++
+		}
+	}
+	s.mutex.Unlock()
+	return RuntimeInfo{
+		ConnectedClients:  connectedClients,
+		ConnectedReplicas: connectedReplicas,
+		TotalConnections:  s.totalConnections.Load(),
+		TotalCommands:     s.totalCommands.Load(),
+		CommandErrors:     s.commandErrors.Load(),
+		ProtocolErrors:    s.protocolErrors.Load(),
+	}
 }

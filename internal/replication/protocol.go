@@ -9,7 +9,15 @@ import (
 	"strings"
 
 	"github.com/mrktsm/gedis/internal/resp"
+	"github.com/mrktsm/gedis/internal/server"
 )
+
+func (p *Primary) ClassifyConnectionCommand(command [][]byte) server.ConnectionRole {
+	if len(command) > 0 && strings.EqualFold(string(command[0]), "PSYNC") {
+		return server.ConnectionRoleReplica
+	}
+	return server.ConnectionRoleClient
+}
 
 // HandleConnectionCommand implements the Redis-shaped handshake used by Gedis
 // replicas. FULLRESYNC carries a Redis-style length-prefixed transfer of

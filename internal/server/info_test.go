@@ -141,6 +141,34 @@ func TestInfoCanSelectMultipleSections(t *testing.T) {
 	}
 }
 
+func TestInfoClientsAndStatsUseRuntimeProvider(t *testing.T) {
+	t.Parallel()
+
+	engine := NewEngine()
+	engine.setRuntimeInfoProvider(staticRuntimeInfo{info: RuntimeInfo{
+		ConnectedClients:  4,
+		ConnectedReplicas: 2,
+		TotalConnections:  12,
+		TotalCommands:     34,
+		CommandErrors:     5,
+		ProtocolErrors:    1,
+	}})
+	response := engine.Execute(stringsToBytes([]string{"INFO", "clients", "stats"})).Response
+	text := string(response.Bytes())
+	if !strings.HasPrefix(text, "# Clients\r\n") || !strings.Contains(text, "\r\n# Stats\r\n") {
+		t.Fatalf("INFO clients stats = %q", text)
+	}
+	assertInfoFieldValues(t, text, map[string]string{
+		"connected_clients":                   "4",
+		"gedis_connected_replica_connections": "2",
+		"gedis_connected_connections":         "6",
+		"total_connections_received":          "12",
+		"total_commands_processed":            "34",
+		"gedis_command_errors":                "5",
+		"gedis_protocol_errors":               "1",
+	})
+}
+
 func assertInfoFields(t *testing.T, info string, want map[string]string) {
 	t.Helper()
 	if !strings.HasPrefix(info, "# Persistence\r\n") {
@@ -170,6 +198,14 @@ type staticReplicationInfo struct {
 }
 
 func (s staticReplicationInfo) ReplicationInfo() ReplicationInfo {
+	return s.info
+}
+
+type staticRuntimeInfo struct {
+	info RuntimeInfo
+}
+
+func (s staticRuntimeInfo) RuntimeInfo() RuntimeInfo {
 	return s.info
 }
 
