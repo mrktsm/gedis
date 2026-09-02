@@ -84,7 +84,8 @@ from the README without undocumented setup.
 **Current status:** structured process logs; `INFO persistence`, `replication`,
 `clients`, and `stats`; a RESP health probe; a non-root multi-stage image; and a
 CI-verified Compose primary/replica demo are implemented. Reproducible benchmark
-instructions and the published compatibility table remain.
+workloads, five-run methodology, and a labeled local baseline are also
+published. The command compatibility table remains.
 
 ## Explicit non-goals for this roadmap
 

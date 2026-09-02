@@ -60,6 +60,17 @@ cannot silently change the design record.
   is the operational reference for a dedicated data directory and
   Redis-compatible container conventions.
 
+## Benchmark references
+
+- [Go `testing` benchmark documentation](https://pkg.go.dev/testing#hdr-Benchmarks)
+  defines the `BenchmarkX`, `RunParallel`, timer, and allocation-reporting
+  conventions used by the checked-in workloads.
+- [Redis benchmark guidance](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/)
+  is the methodology reference for separating embedded and network cost and for
+  recording concurrency, pipeline depth, payload, persistence, and hardware.
+- [Go `benchstat`](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) is the
+  recommended statistical comparison tool for repeated Go benchmark samples.
+
 ## Reference policy
 
 When behavior is ambiguous, probe the pinned Redis baseline, turn the observed

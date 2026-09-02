@@ -49,6 +49,9 @@ jobs:
       - name: Fuzz RESP decoder
         run: go test -run '^$' -fuzz '^FuzzReader$' -fuzztime 5s ./internal/resp
 
+      - name: Smoke-test benchmark harness
+        run: go test -run '^$' -bench '^Benchmark(Engine|TCP)Commands$' -benchtime 10ms -count 1 ./internal/server
+
       - name: Build server
         run: |
           go build -o /tmp/gedis ./cmd/gedis

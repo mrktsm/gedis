@@ -100,6 +100,19 @@ Named volumes preserve each node's AOF and the replica resume checkpoint across
 ordinary `docker compose down` / `up` cycles. Use `docker compose down --volumes`
 only when you intentionally want to delete that demo state.
 
+## Benchmarks
+
+Run the checked-in engine and loopback TCP workloads with five samples and
+allocation reporting:
+
+```bash
+./scripts/bench.sh
+```
+
+The [benchmark method and labeled local baseline](docs/benchmarks.md) keep
+embedded command cost separate from end-to-end RESP/TCP measurements and record
+pipeline depth, payload size, persistence mode, runtime, hardware, and variance.
+
 ## Architecture
 
 - **Server**: TCP lifecycle, concurrent clients, ordered dispatch, and shutdown
