@@ -40,6 +40,11 @@ tests/integration/    Black-box protocol and multi-node tests
 The `internal` boundary is intentional: the first supported product surface is
 the Gedis server, not a prematurely stabilized embeddable library API.
 
+Command metadata lives beside handler registration and is the single source for
+dispatch policy, Redis-compatible `COMMAND` discovery, and the generated
+compatibility table. CI regenerates the table and rejects drift, so documentation
+cannot advertise a command that the engine does not register.
+
 ## Request path
 
 ```text

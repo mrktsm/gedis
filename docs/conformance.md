@@ -37,6 +37,7 @@ results were then captured in deterministic tests under `internal/server` or
 | `INFO clients` / `stats` | Counts active clients separately from terminal replica streams and reports process-lifetime connection, command, command-error, and protocol-error totals | `internal/server/server_test.go`, `internal/server/info_test.go` |
 | Container health | Static non-root image probes `PING`/`PONG`; Compose gates replica startup on primary health and replica readiness on completed initial sync | `cmd/gedis-healthcheck/main_test.go`, `Dockerfile`, `compose.yaml` |
 | Benchmark harness | Separates embedded engine cost from one-connection loopback TCP, fixes payload and pipeline depth, reports allocations, and records five-run variance | `internal/server/benchmark_test.go`, `scripts/bench.sh`, `docs/benchmarks.md` |
+| `COMMAND` discovery | Bare, `COUNT`, and `INFO` replies expose the registry's actual arity, flags, and legacy key positions; missing names are null arrays | `internal/server/command_info_test.go`, `cmd/gedis-command-docs/main_test.go` |
 | Primary `PSYNC` | Uses Redis's 40-hex ID, next-byte offset, `FULLRESYNC`/`CONTINUE` replies, length-prefixed full transfer, and canonical live command stream | `internal/replication/protocol_test.go`, `internal/replication/primary_test.go` |
 | Replica sync | Negotiates on TCP, atomically installs full state, applies live commands, rejects clients with `READONLY`, and catches up from backlog after reconnect | `internal/replication/replica_test.go`, `internal/server/readonly_test.go` |
 | Replica restart | Reuses a saved ID/offset only when its primary and exact recovered AOF size match; mismatches force full sync | `internal/replication/state_test.go`, `cmd/gedis/replica_state_test.go` |
@@ -79,6 +80,11 @@ output was captured locally on 2026-09-02 before defining the Gedis fields. A
 live Gedis primary/replica check then reported one connected replica, advanced
 both nodes to byte offset 36 after a `SET`, and exposed the replica's successful
 full-sync count.
+
+Redis 7.2.7 probes also captured `COMMAND INFO GET`, missing-name behavior,
+subcommand arity errors, and unknown-subcommand text. An unmodified
+`redis-cli 7.2.7` then parsed Gedis's six-field legacy reply, reported 30
+commands, and rendered an unknown command as nil.
 
 [GitHub Actions run 33602698499](https://github.com/mrktsm/gedis/actions/runs/33602698499)
 built the image on 2026-09-02, validated the Compose model, started the

@@ -22,6 +22,10 @@ the repository at that commit.
 
 **Exit:** unmodified `redis-cli` can connect and pipeline commands.
 
+**Status:** complete for the defined subset. RESP2 streaming, pipelining,
+connection lifecycle commands, and registry-backed `COMMAND`, `COUNT`, and
+`INFO` discovery are implemented and tested with `redis-cli`.
+
 ## 3. Typed keyspace, strings, and expiration
 
 - Implement `GET`, `SET`, `DEL`, `EXISTS`, `INCR`, `MGET`, and `MSET`.
@@ -81,11 +85,12 @@ full synchronization.
 **Exit:** a new contributor can reproduce tests, a demo, and benchmark results
 from the README without undocumented setup.
 
-**Current status:** structured process logs; `INFO persistence`, `replication`,
-`clients`, and `stats`; a RESP health probe; a non-root multi-stage image; and a
-CI-verified Compose primary/replica demo are implemented. Reproducible benchmark
-workloads, five-run methodology, and a labeled local baseline are also
-published. The command compatibility table remains.
+**Status:** complete for the defined subset. Structured process logs; `INFO`
+sections for persistence, replication, clients, and stats; a RESP health probe;
+a non-root multi-stage image; and a CI-verified Compose primary/replica demo are
+implemented. Reproducible benchmark workloads, five-run methodology, and a
+labeled local baseline are also published. The registry-generated command
+compatibility table is checked in CI.
 
 ## Explicit non-goals for this roadmap
 

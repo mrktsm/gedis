@@ -12,6 +12,8 @@ cannot silently change the design record.
   defines RESP framing, request/response types, binary safety, and pipelining.
 - [Redis command documentation](https://redis.io/docs/latest/commands/)
   is the behavioral source of truth for the supported command subset.
+- [Redis `COMMAND` documentation](https://redis.io/docs/latest/commands/command/)
+  defines command arity, flags, legacy key positions, and discovery replies.
 - [Redis persistence](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/)
   motivates canonical RESP commands in the AOF, fsync policies, and rewrite.
 - [Redis replication](https://redis.io/docs/latest/operate/oss_and_stack/management/replication/)
@@ -34,6 +36,9 @@ cannot silently change the design record.
 - [Redis 7.2.7 `server.c`](https://github.com/redis/redis/blob/7.2.7/src/server.c)
   is the pinned source reference for `INFO` section framing and the replication,
   persistence, client, and statistics field layout.
+- [Redis 7.2.7 `commands.def`](https://github.com/redis/redis/blob/7.2.7/src/commands.def)
+  is the source-level reference for keeping command dispatch metadata
+  centralized rather than duplicating it in documentation.
 - [tidwall/redcon v1.6.2](https://github.com/tidwall/redcon/tree/v1.6.2)
   demonstrates a compact Go boundary between a streaming RESP server and
   application command handling. Gedis implements its own protocol layer rather

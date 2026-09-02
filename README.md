@@ -28,6 +28,7 @@ synchronization.
 - Redis-style `INFO persistence`, `replication`, `clients`, and `stats` visibility
 - Primary-side `PSYNC` full/partial streams with a bounded byte backlog
 - Read-only replicas with full sync, live streaming, and durable restart catch-up
+- Redis `COMMAND`, `COMMAND COUNT`, and `COMMAND INFO` discovery
 - Configurable protocol limits and graceful shutdown
 - Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 
@@ -40,6 +41,7 @@ go run ./cmd/gedis
 # Connect with an unmodified Redis client
 redis-cli PING
 redis-cli ECHO "hello from Gedis"
+redis-cli COMMAND COUNT
 
 # Enable AOF recovery with Redis-style fsync choices
 go run ./cmd/gedis -appendonly -appendfsync everysec
@@ -126,4 +128,6 @@ pipeline depth, payload size, persistence mode, runtime, hardware, and variance.
 
 The sequential rebuild is specified in the [architecture](docs/architecture.md),
 [roadmap](docs/roadmap.md), [conformance log](docs/conformance.md), and
-[engineering references](docs/references.md).
+[engineering references](docs/references.md). The generated
+[command compatibility table](docs/commands.md) lists the exact syntax, arity,
+flags, and key positions dispatched by the current registry.
