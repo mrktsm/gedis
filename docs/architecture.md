@@ -163,3 +163,13 @@ go vet ./...
 
 Protocol parsing also receives native Go fuzz targets. Black-box tests connect
 over TCP, and compatibility smoke tests use `redis-cli` when it is installed.
+
+## Container boundary
+
+The multi-stage image runs tests and builds static server and health-check
+binaries in the pinned official Go builder. The runtime is `scratch`, uses the
+numeric non-root identity 65532, exposes only the two binaries plus `/data`, and
+checks health through a real RESP `PING` round trip. Compose waits for the
+primary to become healthy before starting the replica; because a replica opens
+its listener only after initial synchronization, `docker compose up --wait`
+also gates on a completed full sync.

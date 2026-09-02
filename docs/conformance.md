@@ -35,6 +35,7 @@ results were then captured in deterministic tests under `internal/server` or
 | `INFO persistence` | Returns a RESP bulk-string section with Redis field names where meanings align; project-only fields carry a `gedis_` prefix | `internal/server/info_test.go`, `internal/aof/log_test.go` |
 | `INFO replication` | Reports Redis-shaped role, link, offset, downstream count, and backlog fields; Gedis-only sync counters are prefixed | `internal/server/info_test.go`, `internal/replication/info_test.go` |
 | `INFO clients` / `stats` | Counts active clients separately from terminal replica streams and reports process-lifetime connection, command, command-error, and protocol-error totals | `internal/server/server_test.go`, `internal/server/info_test.go` |
+| Container health | Static non-root image probes `PING`/`PONG`; Compose gates replica startup on primary health and replica readiness on completed initial sync | `cmd/gedis-healthcheck/main_test.go`, `Dockerfile`, `compose.yaml` |
 | Primary `PSYNC` | Uses Redis's 40-hex ID, next-byte offset, `FULLRESYNC`/`CONTINUE` replies, length-prefixed full transfer, and canonical live command stream | `internal/replication/protocol_test.go`, `internal/replication/primary_test.go` |
 | Replica sync | Negotiates on TCP, atomically installs full state, applies live commands, rejects clients with `READONLY`, and catches up from backlog after reconnect | `internal/replication/replica_test.go`, `internal/server/readonly_test.go` |
 | Replica restart | Reuses a saved ID/offset only when its primary and exact recovered AOF size match; mismatches force full sync | `internal/replication/state_test.go`, `cmd/gedis/replica_state_test.go` |
@@ -77,6 +78,12 @@ output was captured locally on 2026-09-02 before defining the Gedis fields. A
 live Gedis primary/replica check then reported one connected replica, advanced
 both nodes to byte offset 36 after a `SET`, and exposed the replica's successful
 full-sync count.
+
+[GitHub Actions run 33602698499](https://github.com/mrktsm/gedis/actions/runs/33602698499)
+built the image on 2026-09-02, validated the Compose model, started the
+persistent primary/replica stack with `--wait`, saw both services become
+healthy, and removed the stack and test volumes. The same steps remain
+mandatory in CI.
 
 ## Adding compatibility evidence
 

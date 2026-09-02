@@ -81,10 +81,10 @@ full synchronization.
 **Exit:** a new contributor can reproduce tests, a demo, and benchmark results
 from the README without undocumented setup.
 
-**Current status:** structured process logs plus `INFO persistence`,
-`replication`, `clients`, and `stats` are implemented. Container health checks,
-reproducible benchmark instructions, and the published compatibility table
-remain.
+**Current status:** structured process logs; `INFO persistence`, `replication`,
+`clients`, and `stats`; a RESP health probe; a non-root multi-stage image; and a
+CI-verified Compose primary/replica demo are implemented. Reproducible benchmark
+instructions and the published compatibility table remain.
 
 ## Explicit non-goals for this roadmap
 

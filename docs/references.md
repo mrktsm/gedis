@@ -48,6 +48,18 @@ cannot silently change the design record.
   how an alternative implementation can preserve Redis APIs while clearly
   documenting different concurrency and performance architecture.
 
+## Build and container references
+
+- [Docker multi-stage build documentation](https://docs.docker.com/build/building/multi-stage/)
+  is the basis for separating the Go build/test environment from the minimal
+  runtime image.
+- [Docker Official Image for Go](https://hub.docker.com/_/golang) supplies the
+  pinned `golang:1.24.13-alpine3.23` builder and documents dependency-first
+  module caching.
+- [Redis Docker Official Image packaging](https://github.com/redis/docker-library-redis)
+  is the operational reference for a dedicated data directory and
+  Redis-compatible container conventions.
+
 ## Reference policy
 
 When behavior is ambiguous, probe the pinned Redis baseline, turn the observed

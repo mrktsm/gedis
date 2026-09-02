@@ -83,6 +83,23 @@ checkpoint's primary and AOF size match recovered state. Missing, corrupt, or
 mismatched state safely forces a full synchronization. Volatile replicas without
 AOF always start with a full synchronization.
 
+## Container Demo
+
+The image is built in a pinned official Go builder, runs from `scratch` as UID
+65532, and includes a RESP `PING` health-check binary. The Compose demo starts
+an AOF-backed primary on port 6379 and replica on port 6380:
+
+```bash
+docker compose up --build --wait
+redis-cli -p 6379 SET container-demo replicated
+redis-cli -p 6380 GET container-demo
+docker compose down
+```
+
+Named volumes preserve each node's AOF and the replica resume checkpoint across
+ordinary `docker compose down` / `up` cycles. Use `docker compose down --volumes`
+only when you intentionally want to delete that demo state.
+
 ## Architecture
 
 - **Server**: TCP lifecycle, concurrent clients, ordered dispatch, and shutdown
