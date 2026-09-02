@@ -25,7 +25,7 @@ synchronization.
 - Redis-compatible string commands, conditional `SET`, counters, and TTLs
 - Sorted sets backed by a span-indexed skip list
 - Canonical RESP append-only logging with fsync, replay, and atomic compaction
-- Redis-style `INFO persistence` visibility into durability and rewrites
+- Redis-style `INFO persistence` and `INFO replication` visibility
 - Primary-side `PSYNC` full/partial streams with a bounded byte backlog
 - Read-only replicas with full sync, live streaming, and durable restart catch-up
 - Configurable protocol limits and graceful shutdown
@@ -70,6 +70,7 @@ go run ./cmd/gedis -addr 127.0.0.1:6380 \
 
 redis-cli -p 6379 SET message replicated
 redis-cli -p 6380 GET message
+redis-cli -p 6380 INFO replication
 ```
 
 A disconnected replica requests partial resynchronization from the primary

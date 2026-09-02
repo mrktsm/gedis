@@ -135,6 +135,13 @@ AOF do not persist offsets because their data is not durable.
 Automatic leader election, sharding, Redis Cluster, and consensus are separate
 future projects and are not implied by primary/replica support.
 
+`INFO replication` exposes the node role, upstream link state and applied
+offset on replicas, connected downstream replica count, and local backlog
+coordinates. Fields that carry the same meaning use Redis names; sync attempt
+counters and the distinct upstream ID use a `gedis_` prefix. Keeping upstream
+and downstream histories separate is necessary because a Gedis replica may
+serve its own `PSYNC` stream with a node-local replication ID.
+
 ## Correctness gates
 
 Every milestone must keep these commands green:

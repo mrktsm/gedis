@@ -31,6 +31,9 @@ cannot silently change the design record.
 - [Redis 7.2.7 `replication.c`](https://github.com/redis/redis/blob/7.2.7/src/replication.c)
   is the source-level reference for replication IDs, logical byte offsets,
   backlog history, and partial versus full synchronization.
+- [Redis 7.2.7 `server.c`](https://github.com/redis/redis/blob/7.2.7/src/server.c)
+  is the pinned source reference for `INFO` section framing and the replication,
+  persistence, client, and statistics field layout.
 - [tidwall/redcon v1.6.2](https://github.com/tidwall/redcon/tree/v1.6.2)
   demonstrates a compact Go boundary between a streaming RESP server and
   application command handling. Gedis implements its own protocol layer rather
