@@ -81,6 +81,11 @@ full synchronization.
 **Exit:** a new contributor can reproduce tests, a demo, and benchmark results
 from the README without undocumented setup.
 
+**Current status:** structured process logs plus `INFO persistence`,
+`replication`, `clients`, and `stats` are implemented. Container health checks,
+reproducible benchmark instructions, and the published compatibility table
+remain.
+
 ## Explicit non-goals for this roadmap
 
 - Full Redis command coverage

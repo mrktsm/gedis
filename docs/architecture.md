@@ -142,6 +142,15 @@ counters and the distinct upstream ID use a `gedis_` prefix. Keeping upstream
 and downstream histories separate is necessary because a Gedis replica may
 serve its own `PSYNC` stream with a node-local replication ID.
 
+The TCP server also owns monotonic connection, command, command-error, and
+protocol-error counters. A connection-role classifier changes a socket from
+client to replica before the terminal `PSYNC` handler enters its streaming
+loop. Consequently, `INFO clients` preserves Redis's rule that
+`connected_clients` excludes replica streams. `INFO stats` uses Redis names for
+connection and command totals; error counters remain `gedis_` fields because
+the current command-handler boundary does not centrally observe every possible
+handshake error reply.
+
 ## Correctness gates
 
 Every milestone must keep these commands green:
