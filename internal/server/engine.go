@@ -16,9 +16,8 @@ import (
 type commandHandler func(arguments [][]byte) Result
 
 type command struct {
-	name    string
-	write   bool
-	handler commandHandler
+	metadata CommandMetadata
+	handler  commandHandler
 }
 
 type MutationSink interface {
@@ -74,35 +73,7 @@ func NewEngineWithStoreAndSink(keyspace *store.Keyspace, sink MutationSink) *Eng
 		keyspace:     keyspace,
 		mutationSink: sink,
 	}
-	engine.register("PING", false, handlePing)
-	engine.register("ECHO", false, handleEcho)
-	engine.register("QUIT", false, handleQuit)
-	engine.register("GET", false, engine.handleGet)
-	engine.register("SET", true, engine.handleSet)
-	engine.register("DEL", true, engine.handleDelete)
-	engine.register("EXISTS", false, engine.handleExists)
-	engine.register("INCR", true, engine.handleIncrement)
-	engine.register("INCRBY", true, engine.handleIncrementBy)
-	engine.register("MGET", false, engine.handleMGet)
-	engine.register("MSET", true, engine.handleMSet)
-	engine.register("TYPE", false, engine.handleType)
-	engine.register("EXPIRE", true, engine.handleExpire)
-	engine.register("PEXPIRE", true, engine.handlePExpire)
-	engine.register("EXPIREAT", true, engine.handleExpireAt)
-	engine.register("PEXPIREAT", true, engine.handlePExpireAt)
-	engine.register("TTL", false, engine.handleTTL)
-	engine.register("PTTL", false, engine.handlePTTL)
-	engine.register("PERSIST", true, engine.handlePersist)
-	engine.register("ZADD", true, engine.handleZAdd)
-	engine.register("ZREM", true, engine.handleZRem)
-	engine.register("ZSCORE", false, engine.handleZScore)
-	engine.register("ZCARD", false, engine.handleZCard)
-	engine.register("ZINCRBY", true, engine.handleZIncrBy)
-	engine.register("ZRANGE", false, engine.handleZRange)
-	engine.register("ZRANK", false, engine.handleZRank)
-	engine.register("ZREVRANK", false, engine.handleZRevRank)
-	engine.register("BGREWRITEAOF", false, engine.handleBGRewriteAOF)
-	engine.register("INFO", false, engine.handleInfo)
+	engine.registerCommands()
 	return engine
 }
 
@@ -128,7 +99,7 @@ func (e *Engine) execute(input [][]byte, replication bool) Result {
 		safeName := strings.NewReplacer("\r", "\\r", "\n", "\\n").Replace(requestedName)
 		return Result{Response: resp.Error(fmt.Sprintf("ERR unknown command '%s'", safeName))}
 	}
-	if !registered.write {
+	if !registered.metadata.Write {
 		return registered.handler(input[1:])
 	}
 	if e.readOnly.Load() && !replication {
@@ -175,10 +146,6 @@ func (e *Engine) setRuntimeInfoProvider(provider runtimeInfoProvider) {
 	e.runtimeMutex.Lock()
 	e.runtimeInfo = provider
 	e.runtimeMutex.Unlock()
-}
-
-func (e *Engine) register(name string, write bool, handler commandHandler) {
-	e.commands[name] = command{name: strings.ToLower(name), write: write, handler: handler}
 }
 
 func handlePing(arguments [][]byte) Result {
