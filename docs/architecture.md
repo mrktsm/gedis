@@ -122,8 +122,16 @@ and AOF as local traffic while bypassing only the client `READONLY` policy. A
 running replica retains its ID and offset across reconnects and requests only
 missing backlog bytes.
 
-Replication ID/offset metadata is not yet durable across a replica process
-restart, which currently forces another full sync after local AOF recovery.
+An AOF-backed replica also writes a versioned resume checkpoint after a clean
+shutdown. The checkpoint pairs the primary address, replication ID, and applied
+stream offset with the exact synchronized AOF size. Startup offers that offset
+only if the configured primary and recovered AOF size both match. This ordering
+closes the unsafe window around non-idempotent commands: a crash after an AOF
+append but before offset advancement leaves a size mismatch and therefore
+forces a full synchronization. Checkpoint replacement uses a same-directory
+temporary file, file and directory fsync, and atomic rename. Replicas without
+AOF do not persist offsets because their data is not durable.
+
 Automatic leader election, sharding, Redis Cluster, and consensus are separate
 future projects and are not implied by primary/replica support.
 

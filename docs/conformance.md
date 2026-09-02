@@ -35,6 +35,7 @@ results were then captured in deterministic tests under `internal/server` or
 | `INFO persistence` | Returns a RESP bulk-string section with Redis field names where meanings align; project-only fields carry a `gedis_` prefix | `internal/server/info_test.go`, `internal/aof/log_test.go` |
 | Primary `PSYNC` | Uses Redis's 40-hex ID, next-byte offset, `FULLRESYNC`/`CONTINUE` replies, length-prefixed full transfer, and canonical live command stream | `internal/replication/protocol_test.go`, `internal/replication/primary_test.go` |
 | Replica sync | Negotiates on TCP, atomically installs full state, applies live commands, rejects clients with `READONLY`, and catches up from backlog after reconnect | `internal/replication/replica_test.go`, `internal/server/readonly_test.go` |
+| Replica restart | Reuses a saved ID/offset only when its primary and exact recovered AOF size match; mismatches force full sync | `internal/replication/state_test.go`, `cmd/gedis/replica_state_test.go` |
 
 The manual command probes covered `SET`, `GET`, `DEL`, `EXISTS`, `INCR`,
 `INCRBY`, `MGET`, `MSET`, `TYPE`, `EXPIRE`, `PEXPIRE`, `TTL`, `PTTL`,
@@ -53,8 +54,7 @@ AOF encoding, replay, truncation detection, fsync policies, write ordering,
 server startup recovery, and atomic rewrite are implemented. A manual
 `redis-cli` process test compacted 8,410 bytes of superseded history to 137
 bytes, then restarted and recovered the latest string, its remaining TTL, and
-the sorted set. Replica-side synchronization is still roadmap work and must not
-be presented as shipped until its integration tests land.
+the sorted set.
 
 Primary-side replication has a separate compatibility boundary: `redis-cli`
 accepted a Gedis `FULLRESYNC` transfer and logged the following live `SET`, but
@@ -64,8 +64,11 @@ RDB image. Gedis does not claim that a Redis server can act as its replica.
 A two-process Gedis check recovered a string with its remaining TTL and a
 sorted set during full sync, applied a later live write, returned Redis's
 `READONLY` error to a replica client write, and maintained a separate replica
-AOF. Same-process reconnect/partial-sync behavior is covered by a real-TCP test;
-durable restart offsets remain a documented gap.
+AOF. On 2026-09-02, a separate clean-restart check loaded an AOF/checkpoint,
+received an offline `INCR` through `CONTINUE`, and converged to `2` without
+duplicate application. Changing the AOF independently caused a size-mismatch
+warning, a `FULLRESYNC`, and removal of the divergent key. Same-process and
+recreated-replica partial sync are also covered by real-TCP tests.
 
 ## Adding compatibility evidence
 

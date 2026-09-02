@@ -65,10 +65,11 @@ implemented and tested.
 **Exit:** a restarted replica catches up without a full copy when its offset is
 still present in the primary backlog.
 
-**Current status:** primary IDs, byte offsets, bounded backlog, gap-free
-snapshots, `REPLCONF`, `PSYNC` full/partial streams, read-only replica clients,
-reconnect catch-up, and two-process full/live sync are implemented. Persisting
-replica ID/offset metadata across process restarts remains.
+**Status:** complete for the defined subset. Primary IDs, byte offsets, bounded
+backlog, gap-free snapshots, `REPLCONF`, `PSYNC` full/partial streams, read-only
+replica clients, reconnect catch-up, two-process full/live sync, and AOF-bound
+restart checkpoints are implemented. Unsafe or stale checkpoints fall back to
+full synchronization.
 
 ## 7. Operational proof
 

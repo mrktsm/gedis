@@ -12,7 +12,8 @@ replication.
 
 Gedis is undergoing a sequential rebuild. The current server combines a tested
 RESP2 networking layer with a typed concurrent keyspace, expiration, string and
-sorted-set commands, and the foundations of append-only persistence.
+sorted-set commands, append-only persistence, and primary/replica
+synchronization.
 
 <br clear="left"/>
 
@@ -26,7 +27,7 @@ sorted-set commands, and the foundations of append-only persistence.
 - Canonical RESP append-only logging with fsync, replay, and atomic compaction
 - Redis-style `INFO persistence` visibility into durability and rewrites
 - Primary-side `PSYNC` full/partial streams with a bounded byte backlog
-- Read-only replicas with full sync, live streaming, and reconnect catch-up
+- Read-only replicas with full sync, live streaming, and durable restart catch-up
 - Configurable protocol limits and graceful shutdown
 - Unit, randomized model, black-box TCP, race-detector, and fuzz coverage
 
@@ -71,9 +72,13 @@ redis-cli -p 6379 SET message replicated
 redis-cli -p 6380 GET message
 ```
 
-A disconnected running replica requests partial resynchronization from the
-primary backlog. Replication ID/offset metadata is not yet persisted across a
-replica process restart, so a restarted replica currently requests a full sync.
+A disconnected replica requests partial resynchronization from the primary
+backlog. With AOF enabled, a clean shutdown atomically saves its replication ID,
+offset, primary address, and exact AOF size to `<aof-path>.replstate`; use
+`-replica-state-path` to override that path. A restart resumes only when the
+checkpoint's primary and AOF size match recovered state. Missing, corrupt, or
+mismatched state safely forces a full synchronization. Volatile replicas without
+AOF always start with a full synchronization.
 
 ## Architecture
 
@@ -83,6 +88,8 @@ replica process restart, so a restarted replica currently requests a full sync.
 - **Keyspace**: Typed values, lazy/active expiration, and atomic mutations
 - **Persistence**: Ordered canonical mutations, startup recovery, and fsync
   policies
+- **Replication**: Byte-offset backlog, atomic full sync, partial resync, and
+  crash-safe resume checkpoints
 
 The sequential rebuild is specified in the [architecture](docs/architecture.md),
 [roadmap](docs/roadmap.md), [conformance log](docs/conformance.md), and
