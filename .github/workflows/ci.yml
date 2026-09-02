@@ -50,4 +50,21 @@ jobs:
         run: go test -run '^$' -fuzz '^FuzzReader$' -fuzztime 5s ./internal/resp
 
       - name: Build server
-        run: go build -o /tmp/gedis ./cmd/gedis
+        run: |
+          go build -o /tmp/gedis ./cmd/gedis
+          go build -o /tmp/gedis-healthcheck ./cmd/gedis-healthcheck
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build container image
+        run: docker build --tag gedis:ci .
+
+      - name: Start primary and replica demo
+        run: |
+          docker compose up --detach --wait
+          docker compose ps
+
+      - name: Stop container demo
+        if: always()
+        run: docker compose down --volumes
